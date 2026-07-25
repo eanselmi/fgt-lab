@@ -1,3 +1,7 @@
+# Never commit Markdown files, except README.md
+*.md
+!README.md
+
 # Local .terraform directories
 .terraform/
 
