@@ -18,6 +18,21 @@ computadora. El binario de Terraform se descarga solo.
 ## Requisitos
 
 - Una **cuenta de AWS** donde seas **administrador** (sin restricciones de IAM).
+- **Creá la cuenta en Paid account plan (NO uses Free plan).** Al registrarte,
+  AWS te deja elegir el plan: elegí **Paid plan**.
+  - Los **US$ 100 de bienvenida + los US$ 100 por actividades los recibís igual**
+    en Paid plan (los créditos no dependen del plan). No perdés nada por elegir
+    Paid.
+  - El **Free plan bloquea** los tipos de instancia que no son free-tier-eligible
+    (solo permite `t2.micro`/`t3.micro`), y el lab usa `t2.small` / `t3.medium` /
+    `c6i.large`. En Free plan el `deploy` falla con `InvalidParameterCombination:
+    The specified instance type is not eligible for Free Tier`.
+  - En Paid plan **no te cobran nada mientras te alcancen los créditos** (el lab
+    está pensado para gastar US$ 0 de bolsillo).
+  - **¿Ya la creaste en Free plan?** Upgradeá desde Billing and Cost Management →
+    cambiar de plan → **Paid plan**. Los créditos se conservan (aplican 12
+    meses). Hacelo **directo desde Billing**; NO uniéndote a una AWS Organization
+    / Control Tower, porque eso **expira los créditos al instante**.
 - Aceptar en **AWS Marketplace** la suscripción del producto FortiGate que vayas
   a usar (una sola vez por cuenta):
   - **Fase 1:** FortiGate VM **BYOL**.
