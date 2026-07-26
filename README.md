@@ -30,6 +30,25 @@ CloudShell ya trae `git`, `aws`, `curl` y `unzip`; no hace falta instalar nada.
 
 ---
 
+## Créditos extra (antes de empezar)
+
+Las cuentas nuevas reciben **US$ 100** al registrarse y pueden ganar **US$ 100
+más** completando 5 tareas rápidas (EC2, Lambda, RDS, Budgets y Bedrock). Para
+llegar a los **US$ 200** y tener margen de sobra en el lab, el repo trae un
+script que **automatiza 4 de esas 5 tareas**:
+
+```bash
+./tasks deploy     # crea EC2 + Lambda + RDS + Budget
+# ... una vez que se acreditaron los créditos ...
+./tasks destroy    # borra todo eso
+```
+
+- La tarea de **Bedrock va a mano** en la consola (Amazon Bedrock → playground →
+  elegir un modelo y enviar un prompt); no se puede automatizar.
+- Corré `./tasks destroy` apenas se acrediten los créditos, para no gastar de más.
+
+---
+
 ## Uso rápido
 
 En **AWS CloudShell**:

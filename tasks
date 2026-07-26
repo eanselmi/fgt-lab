@@ -1,0 +1,262 @@
+#!/usr/bin/env bash
+#
+# Crea/elimina los recursos de las tareas del AWS Free Tier para desbloquear los
+# 100 USD de creditos extra de una cuenta nueva. Automatiza 4 de las 5 tareas:
+# EC2, Lambda, RDS y Budgets. La tarea de BEDROCK NO se automatiza: hay que
+# hacerla a mano en la consola (playground de Amazon Bedrock).
+#
+# Uso (desde AWS CloudShell):
+#   ./tasks deploy    # crea los recursos de las tareas
+#   ./tasks destroy   # elimina todo lo que creo deploy
+#
+# Basado en labs21-cloud/aws-credit-scripts, unificado en un solo script.
+#
+set -euo pipefail
+export AWS_PAGER=""
+
+REGION="us-east-1"
+EC2_TAG="DemoEC2"
+RDS_ID="demo-rds-instance"
+LAMBDA_NAME="demo-lambda"
+BUDGET_NAME="demo-budget"
+ROLE_NAME="LambdaBasicExecutionRole"
+LAMBDA_RUNTIME="python3.13"
+
+usage() {
+  cat <<EOF
+Uso: ./tasks <comando>
+
+Comandos:
+  deploy    Crea EC2 + Lambda + RDS + Budget (4 de las 5 tareas del Free Tier
+            para los 100 USD extra de creditos).
+  destroy   Elimina todos esos recursos.
+
+La tarea de Bedrock NO se automatiza: hacela a mano en la consola
+(Amazon Bedrock -> playground -> elegir un modelo y enviar un prompt).
+EOF
+}
+
+require_tools() {
+  for tool in aws zip; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "ERROR: falta '$tool'." >&2
+      exit 1
+    fi
+  done
+}
+
+resolve_account() {
+  ACCOUNT_ID="$(aws sts get-caller-identity --query 'Account' --output text)"
+  if [[ -z "$ACCOUNT_ID" || "$ACCOUNT_ID" == "None" ]]; then
+    echo "ERROR: no se pudieron obtener credenciales de AWS." >&2
+    exit 1
+  fi
+}
+
+create_budget() {
+  if aws budgets describe-budget --account-id "$ACCOUNT_ID" --budget-name "$BUDGET_NAME" --region "$REGION" >/dev/null 2>&1; then
+    echo ">> Budget '$BUDGET_NAME' ya existe."
+    return
+  fi
+  echo ">> Creando budget '$BUDGET_NAME'..."
+  aws budgets create-budget \
+    --account-id "$ACCOUNT_ID" \
+    --region "$REGION" \
+    --budget "{\"BudgetName\":\"$BUDGET_NAME\",\"BudgetLimit\":{\"Amount\":\"1.00\",\"Unit\":\"USD\"},\"TimeUnit\":\"MONTHLY\",\"BudgetType\":\"COST\"}" >/dev/null
+  echo ">> Budget creado."
+}
+
+start_rds() {
+  if aws rds describe-db-instances --db-instance-identifier "$RDS_ID" --region "$REGION" >/dev/null 2>&1; then
+    echo ">> RDS '$RDS_ID' ya existe."
+    return
+  fi
+  echo ">> Lanzando RDS '$RDS_ID' (db.t3.micro) en segundo plano..."
+  aws rds create-db-instance \
+    --db-instance-identifier "$RDS_ID" \
+    --db-instance-class db.t3.micro \
+    --engine mysql \
+    --allocated-storage 20 \
+    --master-username adminuser \
+    --master-user-password 'MySecurePass123!' \
+    --no-publicly-accessible \
+    --region "$REGION" >/dev/null
+}
+
+create_ec2() {
+  local existing ami id
+  existing="$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=$EC2_TAG" "Name=instance-state-name,Values=running,pending,stopping,stopped" \
+    --query 'Reservations[].Instances[].InstanceId' --output text --region "$REGION")"
+  if [[ -n "$existing" ]]; then
+    echo ">> EC2 '$EC2_TAG' ya existe: $existing"
+    return
+  fi
+
+  echo ">> Buscando AMI Amazon Linux 2023 mas reciente..."
+  ami="$(aws ssm get-parameter \
+    --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+    --query 'Parameter.Value' --output text --region "$REGION")"
+
+  echo ">> Creando EC2 t3.micro ($ami)..."
+  id="$(aws ec2 run-instances \
+    --image-id "$ami" \
+    --instance-type t3.micro \
+    --region "$REGION" \
+    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$EC2_TAG}]" \
+    --query 'Instances[0].InstanceId' --output text)"
+
+  echo ">> Esperando EC2 en estado running ($id)..."
+  aws ec2 wait instance-running --instance-ids "$id" --region "$REGION"
+  echo ">> EC2 lista: $id"
+}
+
+create_lambda() {
+  local role_arn tmp
+  if aws lambda get-function --function-name "$LAMBDA_NAME" --region "$REGION" >/dev/null 2>&1; then
+    echo ">> Lambda '$LAMBDA_NAME' ya existe."
+    return
+  fi
+
+  role_arn="$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text 2>/dev/null || echo "")"
+  if [[ -z "$role_arn" ]]; then
+    echo ">> Creando role IAM '$ROLE_NAME'..."
+    aws iam create-role \
+      --role-name "$ROLE_NAME" \
+      --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}' >/dev/null
+    aws iam attach-role-policy \
+      --role-name "$ROLE_NAME" \
+      --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole >/dev/null
+    echo ">> Esperando propagacion del role IAM (15s)..."
+    sleep 15
+    role_arn="$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)"
+  fi
+
+  tmp="$(mktemp -d)"
+  printf 'def lambda_handler(event, context):\n    return {"message": "Hello from Lambda"}\n' > "$tmp/lambda_function.py"
+  (cd "$tmp" && zip -q lambda_function.zip lambda_function.py)
+
+  echo ">> Creando Lambda '$LAMBDA_NAME' ($LAMBDA_RUNTIME)..."
+  aws lambda create-function \
+    --function-name "$LAMBDA_NAME" \
+    --runtime "$LAMBDA_RUNTIME" \
+    --role "$role_arn" \
+    --handler lambda_function.lambda_handler \
+    --zip-file "fileb://$tmp/lambda_function.zip" \
+    --region "$REGION" >/dev/null
+
+  rm -rf "$tmp"
+  echo ">> Lambda creada."
+}
+
+wait_rds() {
+  echo ">> Esperando a que RDS este disponible (puede tardar varios minutos)..."
+  aws rds wait db-instance-available --db-instance-identifier "$RDS_ID" --region "$REGION"
+  echo ">> RDS disponible."
+}
+
+destroy_rds() {
+  if aws rds describe-db-instances --db-instance-identifier "$RDS_ID" --region "$REGION" >/dev/null 2>&1; then
+    echo ">> Eliminando RDS '$RDS_ID'..."
+    aws rds delete-db-instance --db-instance-identifier "$RDS_ID" --skip-final-snapshot --region "$REGION" >/dev/null
+    echo ">> Esperando eliminacion de RDS..."
+    aws rds wait db-instance-deleted --db-instance-identifier "$RDS_ID" --region "$REGION"
+    echo ">> RDS eliminada."
+  else
+    echo ">> RDS '$RDS_ID' no existe."
+  fi
+}
+
+destroy_lambda() {
+  if aws lambda get-function --function-name "$LAMBDA_NAME" --region "$REGION" >/dev/null 2>&1; then
+    echo ">> Eliminando Lambda '$LAMBDA_NAME'..."
+    aws lambda delete-function --function-name "$LAMBDA_NAME" --region "$REGION"
+    echo ">> Lambda eliminada."
+  else
+    echo ">> Lambda '$LAMBDA_NAME' no existe."
+  fi
+}
+
+destroy_ec2() {
+  local ids
+  ids="$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=$EC2_TAG" "Name=instance-state-name,Values=running,pending,stopping,stopped" \
+    --query 'Reservations[].Instances[].InstanceId' --output text --region "$REGION")"
+  if [[ -z "$ids" ]]; then
+    echo ">> No hay EC2 con tag Name=$EC2_TAG."
+    return
+  fi
+  echo ">> Terminando EC2: $ids"
+  aws ec2 terminate-instances --instance-ids $ids --region "$REGION" >/dev/null
+  echo ">> Esperando terminacion..."
+  aws ec2 wait instance-terminated --instance-ids $ids --region "$REGION"
+  echo ">> EC2 eliminada."
+}
+
+destroy_budget() {
+  if aws budgets describe-budget --account-id "$ACCOUNT_ID" --budget-name "$BUDGET_NAME" --region "$REGION" >/dev/null 2>&1; then
+    echo ">> Eliminando budget '$BUDGET_NAME'..."
+    aws budgets delete-budget --account-id "$ACCOUNT_ID" --budget-name "$BUDGET_NAME" --region "$REGION"
+    echo ">> Budget eliminado."
+  else
+    echo ">> Budget '$BUDGET_NAME' no existe."
+  fi
+}
+
+destroy_role() {
+  if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+    echo ">> Role IAM '$ROLE_NAME' no existe."
+    return
+  fi
+  echo ">> Eliminando role IAM '$ROLE_NAME'..."
+  local policies policy
+  policies="$(aws iam list-attached-role-policies --role-name "$ROLE_NAME" --query 'AttachedPolicies[].PolicyArn' --output text || echo "")"
+  for policy in $policies; do
+    aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "$policy"
+  done
+  aws iam delete-role --role-name "$ROLE_NAME"
+  echo ">> Role IAM eliminado."
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  deploy)
+    require_tools
+    resolve_account
+    create_budget
+    start_rds
+    create_ec2
+    create_lambda
+    wait_rds
+    echo ""
+    echo "✅ Tareas EC2, Lambda, RDS y Budget creadas."
+    echo "⚠️  Falta la tarea de BEDROCK: hacela a mano en la consola"
+    echo "    (Amazon Bedrock -> playground -> elegir modelo -> enviar un prompt)."
+    echo "ℹ️  Cuando los creditos se hayan acreditado, corre: ./tasks destroy"
+    ;;
+  destroy)
+    require_tools
+    resolve_account
+    destroy_rds
+    destroy_lambda
+    destroy_ec2
+    destroy_budget
+    destroy_role
+    echo ""
+    echo "🧹 Limpieza completa."
+    ;;
+  -h | --help | help)
+    usage
+    exit 0
+    ;;
+  "")
+    echo "ERROR: falta el comando." >&2
+    usage
+    exit 1
+    ;;
+  *)
+    echo "ERROR: comando desconocido: $cmd" >&2
+    usage
+    exit 1
+    ;;
+esac
