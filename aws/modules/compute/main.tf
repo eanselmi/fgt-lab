@@ -15,14 +15,6 @@ resource "aws_vpc_security_group_ingress_rule" "fgt_https" {
   to_port           = 443
 }
 
-resource "aws_vpc_security_group_ingress_rule" "fgt_ssh" {
-  security_group_id = aws_security_group.fgt.id
-  cidr_ipv4         = var.admin_cidr
-  ip_protocol       = "tcp"
-  from_port         = 22
-  to_port           = 22
-}
-
 resource "aws_vpc_security_group_ingress_rule" "fgt_icmp" {
   security_group_id = aws_security_group.fgt.id
   cidr_ipv4         = var.admin_cidr
