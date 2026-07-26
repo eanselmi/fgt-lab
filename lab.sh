@@ -172,11 +172,10 @@ parse_phase() {
 }
 
 ask_shutdown() {
-  local hh tz
-  local default_tz="America/Argentina/Buenos_Aires"
+  local hh tz choice custom
 
   echo ""
-  echo ">> Guardrail: apagado automatico DIARIO de las instancias (obligatorio)."
+  echo ">> Guardrail: apagado automatico DIARIO de las instancias (obligatorio, cuida tus creditos)."
   while true; do
     if ! read -r -p "   Hora de apagado, solo la hora 0-23 (ej: 13, 16, 05): " hh; then
       echo "ERROR: se requiere una hora de apagado (entrada no interactiva)." >&2
@@ -188,11 +187,57 @@ ask_shutdown() {
     echo "   Hora invalida '$hh'. Ingresa un numero de 0 a 23." >&2
   done
 
-  read -r -p "   Zona horaria IANA [${default_tz}]: " tz || tz=""
-  tz="${tz:-$default_tz}"
+  echo ""
+  echo "   Zona horaria: elegi el numero de tu pais"
+  echo "      1) Mexico                (America/Mexico_City)"
+  echo "      2) Espana                (Europe/Madrid)"
+  echo "      3) Colombia              (America/Bogota)"
+  echo "      4) Peru                  (America/Lima)"
+  echo "      5) Argentina             (America/Argentina/Buenos_Aires)"
+  echo "      6) Chile                 (America/Santiago)"
+  echo "      7) Ecuador               (America/Guayaquil)"
+  echo "      8) Brasil                (America/Sao_Paulo)"
+  echo "      9) Republica Dominicana  (America/Santo_Domingo)"
+  echo "     10) Guatemala             (America/Guatemala)"
+  echo "     11) Otra (la escribo yo)"
+  while true; do
+    if ! read -r -p "   Opcion [1-11]: " choice; then
+      echo "ERROR: se requiere elegir zona horaria (entrada no interactiva)." >&2
+      exit 1
+    fi
+    case "$choice" in
+      1) tz="America/Mexico_City" ;;
+      2) tz="Europe/Madrid" ;;
+      3) tz="America/Bogota" ;;
+      4) tz="America/Lima" ;;
+      5) tz="America/Argentina/Buenos_Aires" ;;
+      6) tz="America/Santiago" ;;
+      7) tz="America/Guayaquil" ;;
+      8) tz="America/Sao_Paulo" ;;
+      9) tz="America/Santo_Domingo" ;;
+      10) tz="America/Guatemala" ;;
+      11)
+        if ! read -r -p "   Ingresa tu zona horaria IANA (ej: Europe/Lisbon): " custom; then
+          echo "ERROR: se requiere una zona horaria." >&2
+          exit 1
+        fi
+        if [[ -z "$custom" ]]; then
+          echo "   No ingresaste nada, proba de nuevo." >&2
+          continue
+        fi
+        tz="$custom"
+        ;;
+      *)
+        echo "   Opcion invalida '$choice'. Elegi un numero del 1 al 11." >&2
+        continue
+        ;;
+    esac
+    break
+  done
 
   SHUTDOWN_CRON="cron(0 $((10#$hh)) ? * * *)"
   SHUTDOWN_TZ="$tz"
+  echo ""
   echo "   Apagado programado: $((10#$hh)):00 hs (${tz})"
 }
 

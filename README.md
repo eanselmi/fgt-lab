@@ -63,8 +63,9 @@ Para que **nadie se quede sin créditos** por dejar los equipos prendidos, cada
 `deploy` (o `plan`) programa un **apagado automático diario** de las instancias.
 
 Es **obligatorio**: al correr el comando, el script te pide **a qué hora** querés
-que se apaguen solas (solo la hora, `0`-`23`, ej: `13`, `16`, `05`) y en qué zona
-horaria. No se puede saltear.
+que se apaguen solas (solo la hora, `0`-`23`, ej: `13`, `16`, `05`) y tu **zona
+horaria** — la elegís de una **lista numerada de países** (o la opción `11` para
+escribirla vos). No se puede saltear.
 
 - A esa hora (en punto), **todos los días**, las 4 instancias se apagan solas.
 - Solo **apaga** (nunca prende) y es inofensivo si ya estaban apagadas.
