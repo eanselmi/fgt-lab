@@ -57,14 +57,23 @@ Para destruir todo cuando termines:
 La **única diferencia** entre `fase1` y `fase2` es la AMI y el tipo de instancia
 del FortiGate; la red, el Windows y las IPs públicas no cambian.
 
-### Apagado automático (guardrail de créditos)
+### Apagado automático (obligatorio, para cuidar los créditos)
 
-Al correr `deploy` (o `plan`), el script te pide **obligatoriamente a qué hora
-querés que se apaguen solas las instancias** (solo la hora, 0-23, ej: `13`,
-`16`, `05`) y en qué zona horaria. Queda programado un **apagado automático
-diario** a esa hora (en punto), por si te olvidás de apagar los equipos al
-terminar de practicar. Solo apaga (nunca prende) y es inofensivo si ya están
-apagadas.
+Para que **nadie se quede sin créditos** por dejar los equipos prendidos, cada
+`deploy` (o `plan`) programa un **apagado automático diario** de las instancias.
+
+Es **obligatorio**: al correr el comando, el script te pide **a qué hora** querés
+que se apaguen solas (solo la hora, `0`-`23`, ej: `13`, `16`, `05`) y en qué zona
+horaria. No se puede saltear.
+
+- A esa hora (en punto), **todos los días**, las 4 instancias se apagan solas.
+- Solo **apaga** (nunca prende) y es inofensivo si ya estaban apagadas.
+- Complementa que las instancias se crean **apagadas**: vos las prendés para
+  practicar, y si te olvidás de apagarlas, el guardrail lo hace por vos.
+
+> Ojo: si estás trabajando cuando llega esa hora, se te van a apagar igual.
+> Elegí una hora en la que seguro no estés practicando (ej: la madrugada). Podés
+> volver a prenderlas cuando quieras.
 
 ---
 
