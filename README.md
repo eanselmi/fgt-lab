@@ -95,22 +95,25 @@ Al terminar `deploy`, Terraform imprime los **outputs** con los datos de acceso
 - El acceso SSH (puerto 22) está **cerrado** a propósito; usá la GUI (tiene consola
   CLI web).
 
-### Windows (por SSM, sin key pair)
+### Windows (por Fleet Manager, sin key pair)
 
-El Windows no tiene IP pública ni RDP expuesto. Se accede por **AWS Systems
-Manager Session Manager**:
+El Windows no tiene IP pública ni RDP expuesto. Se accede por **interfaz gráfica**
+usando **AWS Systems Manager → Fleet Manager → Remote Desktop**:
 
-```bash
-aws ssm start-session --target <instance-id-del-windows>
-```
+1. Consola de AWS → **Systems Manager** → **Fleet Manager**.
+2. Seleccioná la instancia del Windows (output `windows`).
+3. **Node actions** → **Connect with Remote Desktop**.
+4. Elegí **User credentials** e ingresá:
+   - **Usuario:** `Administrator`
+   - **Password:** `Fortinet1!`
 
-- **Usuario:** `Administrator`
-- **Password:** `Fortinet1!`
+Se abre el escritorio del Windows en el navegador, sin necesidad de key pair ni de
+exponer RDP.
 
-> ⚠️ **Importante:** el SSM al Windows funciona **recién después de configurar el
-> NAT en el FortiGate**. El Windows llega a los endpoints de SSM saliendo a
-> internet **a través del FortiGate**; hasta que no configures esa salida,
-> Session Manager no conecta.
+> ⚠️ **Importante:** el acceso por Fleet Manager funciona **recién después de
+> configurar el NAT en el FortiGate**. El Windows llega a los endpoints de SSM
+> saliendo a internet **a través del FortiGate**; hasta que no configures esa
+> salida, Fleet Manager no puede conectarse.
 
 ---
 
