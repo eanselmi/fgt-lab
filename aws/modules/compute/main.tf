@@ -172,9 +172,15 @@ resource "aws_instance" "windows" {
 
   user_data_replace_on_change = true
   user_data                   = <<-EOT
-    <powershell>
-    net user Administrator "${var.windows_admin_password}"
-    </powershell>
+    version: 1.1
+    tasks:
+      - task: executeScript
+        inputs:
+          - frequency: always
+            type: powershell
+            runAs: localSystem
+            content: |-
+              net user Administrator "${var.windows_admin_password}"
   EOT
 
   tags = merge(var.tags, {
@@ -186,4 +192,22 @@ resource "aws_route" "private_default" {
   route_table_id         = var.private_route_table_id
   destination_cidr_block = "0.0.0.0/0"
   network_interface_id   = aws_network_interface.lan.id
+}
+
+resource "aws_ec2_instance_state" "fortigate" {
+  instance_id = aws_instance.fortigate.id
+  state       = "stopped"
+
+  lifecycle {
+    ignore_changes = [state]
+  }
+}
+
+resource "aws_ec2_instance_state" "windows" {
+  instance_id = aws_instance.windows.id
+  state       = "stopped"
+
+  lifecycle {
+    ignore_changes = [state]
+  }
 }
