@@ -70,3 +70,24 @@ resource "aws_budgets_budget" "lab" {
     subscriber_sns_topic_arns = [aws_sns_topic.budget_alerts[0].arn]
   }
 }
+
+resource "aws_budgets_budget" "credits" {
+  count        = local.alerts_enabled
+  name         = "${var.project_name}-credits-remaining"
+  budget_type  = "COST"
+  limit_amount = tostring(var.credit_total)
+  limit_unit   = "USD"
+  time_unit    = "ANNUALLY"
+
+  cost_types {
+    include_credit = false
+  }
+
+  notification {
+    comparison_operator       = "GREATER_THAN"
+    threshold                 = var.credit_total - 10
+    threshold_type            = "ABSOLUTE_VALUE"
+    notification_type         = "ACTUAL"
+    subscriber_sns_topic_arns = [aws_sns_topic.budget_alerts[0].arn]
+  }
+}

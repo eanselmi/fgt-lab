@@ -263,27 +263,42 @@ ask_email() {
   echo "   Vas a recibir un email de AWS Notifications para CONFIRMAR la suscripcion: aceptalo."
 }
 
-payg_warning() {
+confirm_fase2() {
+  local answer
   cat >&2 <<'EOF'
+
 ############################################################################
-## FASE 2 — FortiGate PAYG (free trial 30 días)
-##  - El fee de FortiOS PAYG es un cargo de AWS Marketplace y NO lo cubren
-##    los créditos del Free Tier.
-##  - El trial se AUTO-CONVIERTE A PAGO el día 30: cancelar la suscripción
-##    antes de esa fecha (poné un recordatorio + budget alert).
-##  - Requiere haber aceptado la suscripción del producto PAYG en Marketplace
-##    (es distinta a la BYOL de la fase 1).
-##  - Los FortiGate se RECREAN (nueva AMI). Se conservan las EIP (van en las
-##    ENIs), pero se pierde la config de FortiOS: hacé backup/restore.
+## FASE 2 — FortiGate PAYG (free trial de 30 dias)
+##
+## Al desplegar la FASE 2 el lab entra en MODO ULTIMOS 30 DIAS:
+##   - Solo tiene sentido DESPUES de completar la FASE 1 (conectividad BYOL).
+##   - Arranca el free trial del FortiGate PAYG (30 dias). El trial se
+##     AUTO-CONVIERTE A PAGO el dia 30: cancela la suscripcion antes.
+##   - El fee de FortiOS PAYG es un cargo de AWS Marketplace y NO lo cubren
+##     los creditos del Free Tier.
+##   - Requiere haber aceptado la suscripcion del producto PAYG en Marketplace.
+##   - Los FortiGate se RECREAN (nueva AMI): se pierde la config de FortiOS
+##     (backup/restore), pero las EIP se conservan.
 ############################################################################
 EOF
+  if ! read -r -p ">> Confirmas desplegar la FASE 2? (escribi 'si' para continuar): " answer; then
+    echo ">> Cancelado (entrada no interactiva)." >&2
+    exit 1
+  fi
+  case "$answer" in
+    si | Si | SI | s | S) ;;
+    *)
+      echo ">> Cancelado. No se despliega la fase 2." >&2
+      exit 1
+      ;;
+  esac
 }
 
 cmd="${1:-}"
 case "$cmd" in
   deploy)
     parse_phase "${2:-}"
-    [[ "$PHASE" == "2" ]] && payg_warning
+    [[ "$PHASE" == "2" ]] && confirm_fase2
     ask_shutdown
     ask_email
     ensure_terraform

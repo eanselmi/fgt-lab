@@ -51,6 +51,12 @@ variable "alert_email" {
   }
 }
 
+variable "credit_total" {
+  description = "Total de creditos del Free Tier del alumno (USD). Se usa para avisar cuando quedan menos de 10. Cuentas nuevas: 100 base, hasta 200 completando actividades."
+  type        = number
+  default     = 200
+}
+
 variable "shutdown_cron" {
   description = "Expresion cron del apagado automatico diario (guardrail). La arma lab.sh con la hora (0-23) que indica el alumno; siempre en punto (minuto 0)."
   type        = string

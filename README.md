@@ -88,11 +88,17 @@ US$ 1** que te **avisa por email al 50% (US$ 0,50) y al 100% (US$ 1)** si empiez
 a haber gasto real de bolsillo — por ejemplo el fee de FortiOS PAYG, que **no**
 lo cubren los créditos.
 
+Además se crea un **segundo budget enfocado en los créditos**: te avisa (al mismo
+email) cuando te quedan **menos de US$ 10 de créditos**, para que no te agarre
+por sorpresa que se agoten.
+
 - Cuando confirmes el deploy, AWS te manda un email de **AWS Notifications** para
   **confirmar la suscripción**: hacé clic en el link, si no, no vas a recibir los
   avisos.
-- El aviso salta por spend real (después de aplicar créditos), no por consumo de
-  créditos.
+- El primer budget mide **gasto real de bolsillo** (después de aplicar créditos);
+  el segundo mide **consumo de créditos** (gasto bruto, antes de créditos).
+- El total de créditos se asume en **US$ 200** (`credit_total`); si tu cuenta
+  tiene otro monto, ajustá esa variable.
 
 ---
 
