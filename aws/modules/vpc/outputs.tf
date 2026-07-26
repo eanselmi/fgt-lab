@@ -17,3 +17,8 @@ output "private_subnet_ids" {
   description = "IDs de las subnets privadas."
   value       = aws_subnet.private[*].id
 }
+
+output "private_route_table_id" {
+  description = "ID de la route table privada (para agregarle la default route al FortiGate)."
+  value       = aws_route_table.private.id
+}
