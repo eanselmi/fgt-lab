@@ -67,6 +67,10 @@ que se apaguen solas (solo la hora, `0`-`23`, ej: `13`, `16`, `05`) y tu **zona
 horaria** — la elegís de una **lista numerada de países** (o la opción `11` para
 escribirla vos). No se puede saltear.
 
+> Si tu país no está en la lista, buscá tu zona en la columna **"TZ identifier"**
+> de [esta tabla](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)
+> (ej: `Europe/Lisbon`, `America/Costa_Rica`) y usá la opción `11`.
+
 - A esa hora (en punto), **todos los días**, las 4 instancias se apagan solas.
 - Solo **apaga** (nunca prende) y es inofensivo si ya estaban apagadas.
 - Complementa que las instancias se crean **apagadas**: vos las prendés para

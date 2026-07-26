@@ -217,6 +217,8 @@ ask_shutdown() {
       9) tz="America/Santo_Domingo" ;;
       10) tz="America/Guatemala" ;;
       11)
+        echo "   Busca tu zona en la columna 'TZ identifier' de:"
+        echo "   https://en.wikipedia.org/wiki/List_of_tz_database_time_zones"
         if ! read -r -p "   Ingresa tu zona horaria IANA (ej: Europe/Lisbon): " custom; then
           echo "ERROR: se requiere una zona horaria." >&2
           exit 1
