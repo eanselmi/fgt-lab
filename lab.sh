@@ -16,8 +16,16 @@ set -euo pipefail
 TF_VERSION="1.15.8"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TF="$SCRIPT_DIR/bin/terraform"
 AWS_DIR="$SCRIPT_DIR/aws"
+
+# CloudShell solo persiste ~1 GB en $HOME, insuficiente para el binario de
+# Terraform (~110 MB) + el provider de AWS descomprimido (~700 MB). Por eso el
+# binario y los plugins van al disco efímero grande del entorno (override con
+# FGT_LAB_CACHE_DIR). Es efímero: se re-descarga al iniciar una sesión nueva.
+CACHE_DIR="${FGT_LAB_CACHE_DIR:-/tmp/fgt-lab-cache}"
+BIN_DIR="$CACHE_DIR/bin"
+TF="$BIN_DIR/terraform"
+export TF_DATA_DIR="$CACHE_DIR/tfdata"
 
 usage() {
   cat <<EOF
@@ -80,7 +88,7 @@ ensure_terraform() {
   url="https://releases.hashicorp.com/terraform/${TF_VERSION}/${zip}"
 
   echo ">> Terraform no encontrado. Descargando v${TF_VERSION} (${os}_${arch})..."
-  mkdir -p "$SCRIPT_DIR/bin"
+  mkdir -p "$BIN_DIR"
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
 
@@ -98,7 +106,7 @@ ensure_terraform() {
     fi
   fi
 
-  unzip -o -q "$tmp/$zip" terraform -d "$SCRIPT_DIR/bin"
+  unzip -o -q "$tmp/$zip" terraform -d "$BIN_DIR"
   chmod +x "$TF"
   echo ">> Terraform instalado en $TF"
 }
@@ -139,6 +147,7 @@ ensure_state_bucket() {
 }
 
 tf_init() {
+  rm -rf "$AWS_DIR/.terraform"
   "$TF" -chdir="$AWS_DIR" init -input=false \
     -backend-config="bucket=$BUCKET" \
     -backend-config="region=$REGION"
