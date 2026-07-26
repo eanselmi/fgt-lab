@@ -40,6 +40,18 @@ variable "windows_admin_password" {
   sensitive   = true
 }
 
+variable "shutdown_cron" {
+  description = "Expresion cron del apagado automatico diario (guardrail). La arma lab.sh con la hora (0-23) que indica el alumno; siempre en punto (minuto 0)."
+  type        = string
+  default     = "cron(0 23 ? * * *)"
+}
+
+variable "shutdown_timezone" {
+  description = "Zona horaria para el apagado automatico (formato IANA, p. ej. America/Argentina/Buenos_Aires)."
+  type        = string
+  default     = "America/Argentina/Buenos_Aires"
+}
+
 variable "admin_cidr" {
   description = "CIDR permitido para administrar el FortiGate (HTTPS/SSH/ICMP). Por defecto abierto; conviene restringirlo a tu IP."
   type        = string

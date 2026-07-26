@@ -34,6 +34,11 @@ output "fortigate_instance_ids" {
   }
 }
 
+output "auto_shutdown" {
+  description = "Guardrail de apagado automatico diario de las instancias del lab."
+  value       = var.shutdown_cron == "" ? "desactivado" : "${var.shutdown_cron} (${var.shutdown_timezone})"
+}
+
 output "windows" {
   description = "Windows por sitio: instance-id (para SSM) e IP privada."
   value = {

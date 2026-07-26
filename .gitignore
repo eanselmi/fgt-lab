@@ -6,6 +6,9 @@
 # (excede el límite de 100 MB por archivo de GitHub).
 bin/terraform
 
+# macOS
+.DS_Store
+
 # Local .terraform directories
 .terraform/
 

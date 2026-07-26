@@ -42,6 +42,9 @@ Comandos:
 La única diferencia entre fase1 y fase2 es la AMI y el tipo de instancia del
 FortiGate; el resto (red, Windows, EIP) no cambia.
 
+En deploy/plan se pide (obligatorio) la hora (0-23) de un apagado automático
+diario de las instancias, para no dejarlas encendidas por olvido.
+
 Binario de Terraform: $TF (v$TF_VERSION)
 Directorio Terraform:  $AWS_DIR
 EOF
@@ -168,6 +171,31 @@ parse_phase() {
   esac
 }
 
+ask_shutdown() {
+  local hh tz
+  local default_tz="America/Argentina/Buenos_Aires"
+
+  echo ""
+  echo ">> Guardrail: apagado automatico DIARIO de las instancias (obligatorio)."
+  while true; do
+    if ! read -r -p "   Hora de apagado, solo la hora 0-23 (ej: 13, 16, 05): " hh; then
+      echo "ERROR: se requiere una hora de apagado (entrada no interactiva)." >&2
+      exit 1
+    fi
+    if [[ "$hh" =~ ^([0-9]|0[0-9]|1[0-9]|2[0-3])$ ]]; then
+      break
+    fi
+    echo "   Hora invalida '$hh'. Ingresa un numero de 0 a 23." >&2
+  done
+
+  read -r -p "   Zona horaria IANA [${default_tz}]: " tz || tz=""
+  tz="${tz:-$default_tz}"
+
+  SHUTDOWN_CRON="cron(0 $((10#$hh)) ? * * *)"
+  SHUTDOWN_TZ="$tz"
+  echo "   Apagado programado: $((10#$hh)):00 hs (${tz})"
+}
+
 payg_warning() {
   cat >&2 <<'EOF'
 ############################################################################
@@ -189,11 +217,15 @@ case "$cmd" in
   deploy)
     parse_phase "${2:-}"
     [[ "$PHASE" == "2" ]] && payg_warning
+    ask_shutdown
     ensure_terraform
     resolve_env
     ensure_state_bucket
     tf_init
-    "$TF" -chdir="$AWS_DIR" apply -auto-approve -var="lab_phase=$PHASE"
+    "$TF" -chdir="$AWS_DIR" apply -auto-approve \
+      -var="lab_phase=$PHASE" \
+      -var="shutdown_cron=$SHUTDOWN_CRON" \
+      -var="shutdown_timezone=$SHUTDOWN_TZ"
     ;;
   destroy)
     ensure_terraform
@@ -210,11 +242,15 @@ case "$cmd" in
     ;;
   plan)
     parse_phase "${2:-}"
+    ask_shutdown
     ensure_terraform
     resolve_env
     ensure_state_bucket
     tf_init
-    "$TF" -chdir="$AWS_DIR" plan -var="lab_phase=$PHASE"
+    "$TF" -chdir="$AWS_DIR" plan \
+      -var="lab_phase=$PHASE" \
+      -var="shutdown_cron=$SHUTDOWN_CRON" \
+      -var="shutdown_timezone=$SHUTDOWN_TZ"
     ;;
   -h | --help | help)
     usage

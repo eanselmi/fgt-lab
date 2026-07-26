@@ -9,6 +9,10 @@ control).
 Todo se maneja desde **AWS CloudShell**: no necesitás instalar nada en tu
 computadora. El binario de Terraform se descarga solo.
 
+## Arquitectura
+
+![Diagrama del laboratorio: dos VPC (SITE-A y SITE-B), cada una con un FortiGate de 2 WAN con EIP y un Windows privado detrás](docs/FGT%20LAB.jpg)
+
 ---
 
 ## Requisitos
@@ -52,6 +56,15 @@ Para destruir todo cuando termines:
 
 La **única diferencia** entre `fase1` y `fase2` es la AMI y el tipo de instancia
 del FortiGate; la red, el Windows y las IPs públicas no cambian.
+
+### Apagado automático (guardrail de créditos)
+
+Al correr `deploy` (o `plan`), el script te pide **obligatoriamente a qué hora
+querés que se apaguen solas las instancias** (solo la hora, 0-23, ej: `13`,
+`16`, `05`) y en qué zona horaria. Queda programado un **apagado automático
+diario** a esa hora (en punto), por si te olvidás de apagar los equipos al
+terminar de practicar. Solo apaga (nunca prende) y es inofensivo si ya están
+apagadas.
 
 ---
 
