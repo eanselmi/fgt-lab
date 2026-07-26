@@ -4,10 +4,27 @@ variable "project_name" {
   default     = "fgt-lab"
 }
 
-variable "fgt_instance_type" {
-  description = "Tipo de instancia para el FortiGate BYOL. La licencia de evaluacion permite maximo 1 vCPU / 2 GB, por eso t2.small (1 vCPU / 2 GB); las t3.* arrancan en 2 vCPU."
+variable "lab_phase" {
+  description = "Fase del lab: '1' = FortiGate BYOL (eval), '2' = FortiGate PAYG (free trial). Cambia la AMI y el tipo de instancia del FortiGate."
+  type        = string
+  default     = "1"
+
+  validation {
+    condition     = contains(["1", "2"], var.lab_phase)
+    error_message = "lab_phase debe ser '1' (BYOL) o '2' (PAYG)."
+  }
+}
+
+variable "fgt_instance_type_byol" {
+  description = "Tipo de instancia del FortiGate en fase 1 (BYOL eval). La licencia eval permite maximo 1 vCPU / 2 GB, por eso t2.small; las t3.* arrancan en 2 vCPU."
   type        = string
   default     = "t2.small"
+}
+
+variable "fgt_instance_type_payg" {
+  description = "Tipo de instancia del FortiGate en fase 2 (PAYG). FortiGuard necesita >=4 GB o entra en conserve mode; c6i.large (2 vCPU / 4 GB) es el minimo real."
+  type        = string
+  default     = "c6i.large"
 }
 
 variable "windows_instance_type" {
@@ -29,10 +46,16 @@ variable "admin_cidr" {
   default     = "0.0.0.0/0"
 }
 
-variable "fortigate_ami_name_filter" {
-  description = "Filtro de nombre para la AMI del FortiGate BYOL (excluye el PAYG 'AWSONDEMAND')."
+variable "fortigate_byol_ami_name_filter" {
+  description = "Filtro de nombre para la AMI del FortiGate BYOL (fase 1). El espacio tras 'AWS' excluye el PAYG 'AWSONDEMAND'."
   type        = string
   default     = "FortiGate-VM64-AWS build*"
+}
+
+variable "fortigate_payg_ami_name_filter" {
+  description = "Filtro de nombre para la AMI del FortiGate PAYG / on-demand (fase 2)."
+  type        = string
+  default     = "FortiGate-VM64-AWSONDEMAND build*"
 }
 
 variable "sites" {

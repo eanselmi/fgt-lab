@@ -6,13 +6,28 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-data "aws_ami" "fortigate" {
+data "aws_ami" "fortigate_byol" {
   most_recent = true
   owners      = ["aws-marketplace"]
 
   filter {
     name   = "name"
-    values = [var.fortigate_ami_name_filter]
+    values = [var.fortigate_byol_ami_name_filter]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+}
+
+data "aws_ami" "fortigate_payg" {
+  most_recent = true
+  owners      = ["aws-marketplace"]
+
+  filter {
+    name   = "name"
+    values = [var.fortigate_payg_ami_name_filter]
   }
 
   filter {

@@ -29,14 +29,18 @@ export TF_DATA_DIR="$CACHE_DIR/tfdata"
 
 usage() {
   cat <<EOF
-Uso: ./lab.sh <comando>
+Uso: ./lab.sh <comando> [fase]
 
 Comandos:
-  deploy    Descarga Terraform si falta, crea el bucket de state (si falta),
-            inicializa y despliega (terraform apply -auto-approve).
-  destroy   Destruye el lab (terraform destroy -auto-approve) y, si termina
-            bien, elimina el bucket de state aunque no esté vacío.
-  plan      Como deploy pero muestra el plan sin aplicar (dry-run).
+  deploy [fase1|fase2]   Descarga Terraform si falta, crea el bucket de state
+                         (si falta), inicializa y despliega. fase1 = FortiGate
+                         BYOL (default); fase2 = FortiGate PAYG free trial.
+  destroy                Destruye el lab y, si termina bien, elimina el bucket
+                         de state aunque no esté vacío.
+  plan [fase1|fase2]     Como deploy pero muestra el plan sin aplicar (dry-run).
+
+La única diferencia entre fase1 y fase2 es la AMI y el tipo de instancia del
+FortiGate; el resto (red, Windows, EIP) no cambia.
 
 Binario de Terraform: $TF (v$TF_VERSION)
 Directorio Terraform:  $AWS_DIR
@@ -153,14 +157,43 @@ tf_init() {
     -backend-config="region=$REGION"
 }
 
+parse_phase() {
+  case "${1:-fase1}" in
+    fase1) PHASE=1 ;;
+    fase2) PHASE=2 ;;
+    *)
+      echo "ERROR: fase inválida: '${1}'. Usá fase1 o fase2." >&2
+      exit 1
+      ;;
+  esac
+}
+
+payg_warning() {
+  cat >&2 <<'EOF'
+############################################################################
+## FASE 2 — FortiGate PAYG (free trial 30 días)
+##  - El fee de FortiOS PAYG es un cargo de AWS Marketplace y NO lo cubren
+##    los créditos del Free Tier.
+##  - El trial se AUTO-CONVIERTE A PAGO el día 30: cancelar la suscripción
+##    antes de esa fecha (poné un recordatorio + budget alert).
+##  - Requiere haber aceptado la suscripción del producto PAYG en Marketplace
+##    (es distinta a la BYOL de la fase 1).
+##  - Los FortiGate se RECREAN (nueva AMI). Se conservan las EIP (van en las
+##    ENIs), pero se pierde la config de FortiOS: hacé backup/restore.
+############################################################################
+EOF
+}
+
 cmd="${1:-}"
 case "$cmd" in
   deploy)
+    parse_phase "${2:-}"
+    [[ "$PHASE" == "2" ]] && payg_warning
     ensure_terraform
     resolve_env
     ensure_state_bucket
     tf_init
-    "$TF" -chdir="$AWS_DIR" apply -auto-approve
+    "$TF" -chdir="$AWS_DIR" apply -auto-approve -var="lab_phase=$PHASE"
     ;;
   destroy)
     ensure_terraform
@@ -176,11 +209,12 @@ case "$cmd" in
     fi
     ;;
   plan)
+    parse_phase "${2:-}"
     ensure_terraform
     resolve_env
     ensure_state_bucket
     tf_init
-    "$TF" -chdir="$AWS_DIR" plan
+    "$TF" -chdir="$AWS_DIR" plan -var="lab_phase=$PHASE"
     ;;
   -h | --help | help)
     usage
