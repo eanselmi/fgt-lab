@@ -21,18 +21,18 @@ LAMBDA_NAME="demo-lambda"
 BUDGET_NAME="demo-budget"
 ROLE_NAME="LambdaBasicExecutionRole"
 LAMBDA_RUNTIME="python3.13"
+BEDROCK_MODEL_ID="amazon.titan-text-premier-v1:0"
 
 usage() {
   cat <<EOF
 Uso: ./tasks <comando>
 
 Comandos:
-  deploy    Crea EC2 + Lambda + RDS + Budget (4 de las 5 tareas del Free Tier
-            para los 100 USD extra de creditos).
-  destroy   Elimina todos esos recursos.
-
-La tarea de Bedrock NO se automatiza: hacela a mano en la consola
-(Amazon Bedrock -> playground -> elegir un modelo y enviar un prompt).
+  deploy    Crea EC2 + Lambda + RDS + Budget y ejecuta la tarea de Bedrock
+            (las 5 tareas del Free Tier para los 100 USD extra de creditos).
+  destroy   Elimina esos recursos (Bedrock no deja nada que borrar).
+  bedrock   Ejecuta solo la tarea de Bedrock (util para reintentar si el
+            acceso al modelo todavia estaba propagando).
 EOF
 }
 
@@ -155,6 +155,61 @@ wait_rds() {
   echo ">> RDS disponible."
 }
 
+run_bedrock() {
+  local offer_token out i ok
+  echo ">> Habilitando acceso al modelo Bedrock '$BEDROCK_MODEL_ID'..."
+  offer_token="$(aws bedrock list-foundation-model-agreement-offers \
+    --model-id "$BEDROCK_MODEL_ID" \
+    --query 'offers[0].offerToken' --output text --region "$REGION" 2>/dev/null || echo "")"
+
+  if [[ -n "$offer_token" && "$offer_token" != "None" ]]; then
+    if aws bedrock create-foundation-model-agreement \
+      --offer-token "$offer_token" \
+      --model-id "$BEDROCK_MODEL_ID" \
+      --region "$REGION" >/dev/null 2>&1; then
+      echo ">> Acceso al modelo solicitado."
+    else
+      echo ">> El acceso ya estaba concedido (o no requiere acuerdo)."
+    fi
+  else
+    echo ">> El modelo no requiere acuerdo o ya esta habilitado."
+  fi
+
+  echo ">> Invocando el modelo (equivale a mandar el prompt en el playground)..."
+  out="$(mktemp)"
+  i=0
+  ok=0
+  while [[ $i -lt 6 ]]; do
+    if aws bedrock-runtime invoke-model \
+      --model-id "$BEDROCK_MODEL_ID" \
+      --body '{"inputText":"Que es Amazon Bedrock en una frase?","textGenerationConfig":{"maxTokenCount":100,"temperature":0.7}}' \
+      --cli-binary-format raw-in-base64-out \
+      --region "$REGION" \
+      "$out" >/dev/null 2>&1; then
+      ok=1
+      break
+    fi
+    i=$((i + 1))
+    echo "   Acceso todavia propagando, reintento en 30s ($i/6)..."
+    sleep 30
+  done
+
+  if [[ $ok -eq 1 ]]; then
+    echo ">> Respuesta del modelo:"
+    if command -v jq >/dev/null 2>&1; then
+      jq -r '.results[0].outputText' "$out" 2>/dev/null | sed 's/^/     /'
+    else
+      cat "$out"
+      echo ""
+    fi
+    echo ">> Tarea de Bedrock completada."
+  else
+    echo "⚠️  No se pudo invocar el modelo (acceso aun propagando, o modelo no disponible en $REGION)." >&2
+    echo "    Volve a correr './tasks bedrock' en unos minutos, o hacelo a mano en la consola." >&2
+  fi
+  rm -f "$out"
+}
+
 destroy_rds() {
   if aws rds describe-db-instances --db-instance-identifier "$RDS_ID" --region "$REGION" >/dev/null 2>&1; then
     echo ">> Eliminando RDS '$RDS_ID'..."
@@ -227,12 +282,15 @@ case "$cmd" in
     start_rds
     create_ec2
     create_lambda
+    run_bedrock
     wait_rds
     echo ""
-    echo "✅ Tareas EC2, Lambda, RDS y Budget creadas."
-    echo "⚠️  Falta la tarea de BEDROCK: hacela a mano en la consola"
-    echo "    (Amazon Bedrock -> playground -> elegir modelo -> enviar un prompt)."
+    echo "✅ Tareas creadas: EC2, Lambda, RDS, Budget y Bedrock (las 5)."
     echo "ℹ️  Cuando los creditos se hayan acreditado, corre: ./tasks destroy"
+    ;;
+  bedrock)
+    require_tools
+    run_bedrock
     ;;
   destroy)
     require_tools
