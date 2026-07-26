@@ -243,6 +243,26 @@ ask_shutdown() {
   echo "   Apagado programado: $((10#$hh)):00 hs (${tz})"
 }
 
+ask_email() {
+  local email
+
+  echo ""
+  echo ">> Alerta de costos: recibis un aviso por email si el gasto se acerca a 1 USD."
+  while true; do
+    if ! read -r -p "   Tu correo electronico para la alerta: " email; then
+      echo "ERROR: se requiere un correo (entrada no interactiva)." >&2
+      exit 1
+    fi
+    if [[ "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$ ]]; then
+      break
+    fi
+    echo "   Correo invalido '$email'. Proba de nuevo (ej: nombre@dominio.com)." >&2
+  done
+
+  ALERT_EMAIL="$email"
+  echo "   Vas a recibir un email de AWS Notifications para CONFIRMAR la suscripcion: aceptalo."
+}
+
 payg_warning() {
   cat >&2 <<'EOF'
 ############################################################################
@@ -265,6 +285,7 @@ case "$cmd" in
     parse_phase "${2:-}"
     [[ "$PHASE" == "2" ]] && payg_warning
     ask_shutdown
+    ask_email
     ensure_terraform
     resolve_env
     ensure_state_bucket
@@ -272,7 +293,8 @@ case "$cmd" in
     "$TF" -chdir="$AWS_DIR" apply -auto-approve \
       -var="lab_phase=$PHASE" \
       -var="shutdown_cron=$SHUTDOWN_CRON" \
-      -var="shutdown_timezone=$SHUTDOWN_TZ"
+      -var="shutdown_timezone=$SHUTDOWN_TZ" \
+      -var="alert_email=$ALERT_EMAIL"
     ;;
   destroy)
     ensure_terraform
@@ -290,6 +312,7 @@ case "$cmd" in
   plan)
     parse_phase "${2:-}"
     ask_shutdown
+    ask_email
     ensure_terraform
     resolve_env
     ensure_state_bucket
@@ -297,7 +320,8 @@ case "$cmd" in
     "$TF" -chdir="$AWS_DIR" plan \
       -var="lab_phase=$PHASE" \
       -var="shutdown_cron=$SHUTDOWN_CRON" \
-      -var="shutdown_timezone=$SHUTDOWN_TZ"
+      -var="shutdown_timezone=$SHUTDOWN_TZ" \
+      -var="alert_email=$ALERT_EMAIL"
     ;;
   -h | --help | help)
     usage

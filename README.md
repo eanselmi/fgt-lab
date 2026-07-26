@@ -80,6 +80,20 @@ escribirla vos). No se puede saltear.
 > Elegí una hora en la que seguro no estés practicando (ej: la madrugada). Podés
 > volver a prenderlas cuando quieras.
 
+### Alerta de costos por email (budget)
+
+El lab está pensado para gastar **US$ 0** (todo cubierto por créditos). Como red
+de seguridad, el `deploy` te pide tu **correo electrónico** y crea un **budget de
+US$ 1** que te **avisa por email al 50% (US$ 0,50) y al 100% (US$ 1)** si empieza
+a haber gasto real de bolsillo — por ejemplo el fee de FortiOS PAYG, que **no**
+lo cubren los créditos.
+
+- Cuando confirmes el deploy, AWS te manda un email de **AWS Notifications** para
+  **confirmar la suscripción**: hacé clic en el link, si no, no vas a recibir los
+  avisos.
+- El aviso salta por spend real (después de aplicar créditos), no por consumo de
+  créditos.
+
 ---
 
 ## Qué se despliega

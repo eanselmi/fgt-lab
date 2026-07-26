@@ -34,6 +34,11 @@ output "fortigate_instance_ids" {
   }
 }
 
+output "budget_alert" {
+  description = "Alerta de costos por email (budget de 1 USD, aviso al 50%). Hay que confirmar la suscripcion SNS desde el correo."
+  value       = var.alert_email == "" ? "desactivada" : "budget 1 USD, aviso al 50% -> ${var.alert_email} (confirma el email de AWS Notifications)"
+}
+
 output "auto_shutdown" {
   description = "Guardrail de apagado automatico diario de las instancias del lab."
   value       = var.shutdown_cron == "" ? "desactivado" : "${var.shutdown_cron} (${var.shutdown_timezone})"

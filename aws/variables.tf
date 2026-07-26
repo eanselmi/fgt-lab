@@ -40,6 +40,17 @@ variable "windows_admin_password" {
   sensitive   = true
 }
 
+variable "alert_email" {
+  description = "Email del alumno para la alerta de budget (via SNS). Lo pide lab.sh en el deploy. Vacio = sin alerta."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.alert_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alert_email))
+    error_message = "alert_email debe ser una direccion de correo valida."
+  }
+}
+
 variable "shutdown_cron" {
   description = "Expresion cron del apagado automatico diario (guardrail). La arma lab.sh con la hora (0-23) que indica el alumno; siempre en punto (minuto 0)."
   type        = string
