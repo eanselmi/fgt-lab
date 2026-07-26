@@ -21,7 +21,9 @@ LAMBDA_NAME="demo-lambda"
 BUDGET_NAME="demo-budget"
 ROLE_NAME="LambdaBasicExecutionRole"
 LAMBDA_RUNTIME="python3.13"
-BEDROCK_MODEL_ID="amazon.titan-text-premier-v1:0"
+# Modelos serverless (Amazon, on-demand, pay-per-use, sin costo fijo). Se prueban
+# en orden hasta que uno responda. Se auto-habilitan al primer invoke.
+BEDROCK_MODELS=("us.amazon.nova-micro-v1:0" "us.amazon.nova-lite-v1:0" "amazon.titan-text-express-v1")
 
 usage() {
   cat <<EOF
@@ -156,58 +158,46 @@ wait_rds() {
 }
 
 run_bedrock() {
-  local offer_token out i ok
-  echo ">> Habilitando acceso al modelo Bedrock '$BEDROCK_MODEL_ID'..."
-  offer_token="$(aws bedrock list-foundation-model-agreement-offers \
-    --model-id "$BEDROCK_MODEL_ID" \
-    --query 'offers[0].offerToken' --output text --region "$REGION" 2>/dev/null || echo "")"
-
-  if [[ -n "$offer_token" && "$offer_token" != "None" ]]; then
-    if aws bedrock create-foundation-model-agreement \
-      --offer-token "$offer_token" \
-      --model-id "$BEDROCK_MODEL_ID" \
-      --region "$REGION" >/dev/null 2>&1; then
-      echo ">> Acceso al modelo solicitado."
-    else
-      echo ">> El acceso ya estaba concedido (o no requiere acuerdo)."
-    fi
-  else
-    echo ">> El modelo no requiere acuerdo o ya esta habilitado."
-  fi
-
-  echo ">> Invocando el modelo (equivale a mandar el prompt en el playground)..."
+  local out err model i ok=0
   out="$(mktemp)"
-  i=0
-  ok=0
-  while [[ $i -lt 6 ]]; do
-    if aws bedrock-runtime invoke-model \
-      --model-id "$BEDROCK_MODEL_ID" \
-      --body '{"inputText":"Que es Amazon Bedrock en una frase?","textGenerationConfig":{"maxTokenCount":100,"temperature":0.7}}' \
-      --cli-binary-format raw-in-base64-out \
-      --region "$REGION" \
-      "$out" >/dev/null 2>&1; then
-      ok=1
+  err="$(mktemp)"
+  echo ">> Tarea de Bedrock: invocando un modelo con la Converse API."
+  echo "   Los modelos serverless se auto-habilitan al primer invoke; puede tardar unos segundos."
+
+  for model in "${BEDROCK_MODELS[@]}"; do
+    echo ">> Probando modelo '$model'..."
+    for i in 1 2 3; do
+      if aws bedrock-runtime converse \
+        --model-id "$model" \
+        --messages '[{"role":"user","content":[{"text":"Explica que es Amazon Bedrock en una frase."}]}]' \
+        --region "$REGION" >"$out" 2>"$err"; then
+        ok=1
+        break
+      fi
+      echo "   intento $i/3 fallo, reintento en 15s..."
+      sleep 15
+    done
+    if [[ $ok -eq 1 ]]; then
       break
     fi
-    i=$((i + 1))
-    echo "   Acceso todavia propagando, reintento en 30s ($i/6)..."
-    sleep 30
+    echo "   '$model' no disponible. Ultimo error:"
+    sed 's/^/     /' "$err" >&2
   done
 
   if [[ $ok -eq 1 ]]; then
-    echo ">> Respuesta del modelo:"
+    echo ">> El modelo '$model' respondio:"
     if command -v jq >/dev/null 2>&1; then
-      jq -r '.results[0].outputText' "$out" 2>/dev/null | sed 's/^/     /'
+      jq -r '.output.message.content[0].text' "$out" 2>/dev/null | sed 's/^/     /'
     else
       cat "$out"
       echo ""
     fi
     echo ">> Tarea de Bedrock completada."
   else
-    echo "⚠️  No se pudo invocar el modelo (acceso aun propagando, o modelo no disponible en $REGION)." >&2
-    echo "    Volve a correr './tasks bedrock' en unos minutos, o hacelo a mano en la consola." >&2
+    echo "⚠️  No se pudo invocar ningun modelo de Bedrock (ver errores arriba)." >&2
+    echo "    Reintenta con './tasks bedrock' en unos minutos." >&2
   fi
-  rm -f "$out"
+  rm -f "$out" "$err"
 }
 
 destroy_rds() {

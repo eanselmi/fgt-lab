@@ -43,9 +43,11 @@ script que **automatiza las 5 tareas**:
 ./tasks destroy    # borra todo eso
 ```
 
-- **Bedrock** también se automatiza: el script habilita el acceso al modelo
-  *Titan Text G1 Premier* e invoca un prompt (equivale al playground). Si el
-  acceso al modelo todavía estaba propagando, reintentá con `./tasks bedrock`.
+- **Bedrock** también se automatiza: el script invoca un modelo serverless de
+  Amazon (Nova Micro, vía Converse API) con un prompt — equivale al playground.
+  Los modelos se **auto-habilitan al primer invoke** (ya no hay página de "model
+  access"). Si el primer invoke falla por propagación, reintentá con
+  `./tasks bedrock`.
 - Corré `./tasks destroy` apenas se acrediten los créditos, para no gastar de más.
 
 ---
