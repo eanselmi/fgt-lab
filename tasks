@@ -21,9 +21,10 @@ LAMBDA_NAME="demo-lambda"
 BUDGET_NAME="demo-budget"
 ROLE_NAME="LambdaBasicExecutionRole"
 LAMBDA_RUNTIME="python3.13"
-# Modelos serverless (Amazon, on-demand, pay-per-use, sin costo fijo). Se prueban
-# en orden hasta que uno responda. Se auto-habilitan al primer invoke.
-BEDROCK_MODELS=("us.amazon.nova-micro-v1:0" "us.amazon.nova-lite-v1:0" "amazon.titan-text-express-v1")
+# Modelos serverless (on-demand, pay-per-use, sin costo fijo). Se prueban en
+# orden hasta que uno responda. Claude (Anthropic) puede requerir enviar el
+# formulario de caso de uso una vez en la consola; los de Amazon se auto-habilitan.
+BEDROCK_MODELS=("us.anthropic.claude-sonnet-4-6" "us.amazon.nova-micro-v1:0" "us.amazon.nova-lite-v1:0" "amazon.titan-text-express-v1")
 
 usage() {
   cat <<EOF

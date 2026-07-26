@@ -43,11 +43,12 @@ script que **automatiza las 5 tareas**:
 ./tasks destroy    # borra todo eso
 ```
 
-- **Bedrock** también se automatiza: el script invoca un modelo serverless de
-  Amazon (Nova Micro, vía Converse API) con un prompt — equivale al playground.
-  Los modelos se **auto-habilitan al primer invoke** (ya no hay página de "model
-  access"). Si el primer invoke falla por propagación, reintentá con
-  `./tasks bedrock`.
+- **Bedrock**: el script invoca un modelo (Claude Sonnet 4.6, con fallback a
+  Nova) vía Converse API con un prompt. Los modelos de Amazon se auto-habilitan
+  al primer invoke; **Claude/Anthropic puede pedir enviar una vez el formulario
+  de caso de uso en la consola**. ⚠️ Si la tarea **no acredita** por CLI, hacela
+  a mano en el **playground de la consola** (Amazon Bedrock → Chat/Text
+  playground → elegir modelo → mandar un prompt); es 1 minuto.
 - Corré `./tasks destroy` apenas se acrediten los créditos, para no gastar de más.
 
 ---
