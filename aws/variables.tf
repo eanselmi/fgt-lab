@@ -5,9 +5,9 @@ variable "project_name" {
 }
 
 variable "fgt_instance_type" {
-  description = "Tipo de instancia para el FortiGate BYOL."
+  description = "Tipo de instancia para el FortiGate BYOL. La licencia de evaluacion permite maximo 1 vCPU / 2 GB, por eso t2.small (1 vCPU / 2 GB); las t3.* arrancan en 2 vCPU."
   type        = string
-  default     = "t3.small"
+  default     = "t2.small"
 }
 
 variable "windows_instance_type" {
