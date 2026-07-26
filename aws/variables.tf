@@ -16,6 +16,13 @@ variable "windows_instance_type" {
   default     = "t3.medium"
 }
 
+variable "windows_admin_password" {
+  description = "Password del usuario Administrator del Windows, aplicada por user_data en el primer arranque."
+  type        = string
+  default     = "Fortinet1!"
+  sensitive   = true
+}
+
 variable "admin_cidr" {
   description = "CIDR permitido para administrar el FortiGate (HTTPS/SSH/ICMP). Por defecto abierto; conviene restringirlo a tu IP."
   type        = string

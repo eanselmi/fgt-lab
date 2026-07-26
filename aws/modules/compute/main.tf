@@ -170,6 +170,13 @@ resource "aws_instance" "windows" {
   iam_instance_profile        = var.ssm_instance_profile
   associate_public_ip_address = false
 
+  user_data_replace_on_change = true
+  user_data                   = <<-EOT
+    <powershell>
+    net user Administrator "${var.windows_admin_password}"
+    </powershell>
+  EOT
+
   tags = merge(var.tags, {
     Name = "${var.name}-win"
   })

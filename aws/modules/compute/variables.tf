@@ -43,6 +43,12 @@ variable "windows_instance_type" {
   type        = string
 }
 
+variable "windows_admin_password" {
+  description = "Password del usuario Administrator del Windows."
+  type        = string
+  sensitive   = true
+}
+
 variable "admin_cidr" {
   description = "CIDR permitido para administrar el FortiGate (HTTPS/SSH/ICMP)."
   type        = string
