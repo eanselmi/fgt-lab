@@ -15,6 +15,10 @@ set -euo pipefail
 
 TF_VERSION="1.15.8"
 
+# Valor de var.project_name en Terraform: todos los recursos del lab llevan el
+# tag Project=<esto> (default_tags) y los budgets se llaman <esto>-*.
+PROJECT="fgt-lab"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWS_DIR="$SCRIPT_DIR/aws"
 
@@ -39,6 +43,9 @@ Comandos:
   destroy                Destruye el lab y, si termina bien, elimina el bucket
                          de state aunque no esté vacío.
   plan [fase1|fase2]     Como deploy pero muestra el plan sin aplicar (dry-run).
+  status                 Muestra el estado del lab (instancias, status checks,
+                         IPs publicas, Windows/SSM y creditos) sin cambiar nada.
+                         Solo usa la AWS CLI: no necesita Terraform.
 
 En fase2 solo se recrea el FortiGate del SITE-A (PAYG, con WAN2) y se agrega el
 FortiAnalyzer; el SITE-B, los Windows y las EIP existentes no cambian.
@@ -299,6 +306,111 @@ EOF
   esac
 }
 
+lab_status() {
+  local tmp ids win_ids
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  echo ">> Estado del lab (cuenta $ACCOUNT_ID, region $REGION)"
+  echo ""
+
+  aws ec2 describe-instances --region "$REGION" \
+    --filters "Name=tag:Project,Values=$PROJECT" \
+    "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+    --query 'Reservations[].Instances[].[InstanceId, Tags[?Key==`Name`]|[0].Value, State.Name, InstanceType, ImageId]' \
+    --output text >"$tmp/inst"
+
+  if [[ ! -s "$tmp/inst" ]]; then
+    echo "   No hay instancias del lab en $REGION. Desplegalo con: ./lab.sh deploy"
+    return
+  fi
+
+  ids="$(awk -F'\t' '{print $1}' "$tmp/inst")"
+  # shellcheck disable=SC2046
+  aws ec2 describe-images --region "$REGION" \
+    --image-ids $(awk -F'\t' '{print $5}' "$tmp/inst" | sort -u) \
+    --query 'Images[].[ImageId, Name]' --output text >"$tmp/img" 2>/dev/null || true
+  # shellcheck disable=SC2086
+  aws ec2 describe-instance-status --region "$REGION" --include-all-instances \
+    --instance-ids $ids \
+    --query 'InstanceStatuses[].[InstanceId, InstanceStatus.Status, SystemStatus.Status]' \
+    --output text >"$tmp/st"
+
+  echo "   Instancias:"
+  printf "     %-14s %-20s %-9s %-10s %-10s %s\n" "NOMBRE" "INSTANCE-ID" "ESTADO" "TIPO" "CHECKS" "SOFTWARE"
+  awk -F'\t' -v img="$tmp/img" -v st="$tmp/st" '
+    BEGIN {
+      while ((getline line < img) > 0) { split(line, f, "\t"); name[f[1]] = f[2] }
+      while ((getline line < st) > 0) {
+        split(line, f, "\t")
+        if (f[2] == "ok" && f[3] == "ok") c = "ok"
+        else if (f[2] == "not-applicable") c = "-"
+        else if (f[2] == "initializing" || f[3] == "initializing") c = "iniciando"
+        else c = f[2] "/" f[3]
+        chk[f[1]] = c
+      }
+    }
+    {
+      n = name[$5]; v = n; sub(/.*\(/, "", v); sub(/\).*/, "", v)
+      if (n ~ /FortiGate/) sw = "FortiGate " ((n ~ /ONDEMAND/) ? "PAYG" : "BYOL") " " v
+      else if (n ~ /FortiAnalyzer/) sw = "FortiAnalyzer " v
+      else if (n ~ /Windows/) sw = "Windows Server"
+      else sw = "-"
+      printf "     %-14s %-20s %-9s %-10s %-10s %s\n", $2, $1, $3, $4, (chk[$1] == "" ? "-" : chk[$1]), sw
+    }' "$tmp/inst" | sort
+
+  echo ""
+  echo "   IPs publicas (GUI: https://<IP>, usuario admin, password inicial = instance-id):"
+  aws ec2 describe-addresses --region "$REGION" \
+    --filters "Name=tag:Project,Values=$PROJECT" \
+    --query 'Addresses[].[Tags[?Key==`Name`]|[0].Value, PublicIp]' \
+    --output text | sort | awk -F'\t' '{printf "     %-16s %s\n", $1, $2}'
+
+  echo ""
+  echo "   Windows (SSM / Fleet Manager):"
+  win_ids="$(awk -F'\t' '$2 ~ /-win$/ {print $1}' "$tmp/inst")"
+  if [[ -n "$win_ids" ]]; then
+    aws ssm describe-instance-information --region "$REGION" \
+      --filters "Key=InstanceIds,Values=$(tr '\n' ',' <<<"$win_ids" | sed 's/,$//')" \
+      --query 'InstanceInformationList[].[InstanceId, PingStatus, ComputerName]' \
+      --output text >"$tmp/ssm"
+  else
+    : >"$tmp/ssm"
+  fi
+  awk -F'\t' -v ssm="$tmp/ssm" '
+    BEGIN { while ((getline line < ssm) > 0) { split(line, f, "\t"); ping[f[1]] = f[2]; host[f[1]] = f[3] } }
+    $2 ~ /-win$/ {
+      if (ping[$1] == "") msg = "sin conexion a SSM (falta la salida a internet/NAT por el FortiGate, o esta apagado)"
+      else if (host[$1] ~ /\./) msg = ping[$1] ", " host[$1] " (en el dominio)"
+      else msg = ping[$1] ", " host[$1] " (fuera de dominio)"
+      printf "     %-14s %s\n", $2, msg
+    }' "$tmp/inst" | sort
+  echo "     (El DC del SITE-A termina de promoverse ~15 min despues del deploy; se ve"
+  echo "      como 'en el dominio' recien cuando tiene salida a internet por el FortiGate.)"
+
+  echo ""
+  echo "   Creditos y gasto (AWS Budgets, se actualiza unas veces por dia):"
+  local credits pocket
+  credits="$(aws budgets describe-budget --region us-east-1 --account-id "$ACCOUNT_ID" \
+    --budget-name "$PROJECT-credits-remaining" \
+    --query '[Budget.CalculatedSpend.ActualSpend.Amount, Budget.BudgetLimit.Amount]' \
+    --output text 2>/dev/null || true)"
+  pocket="$(aws budgets describe-budget --region us-east-1 --account-id "$ACCOUNT_ID" \
+    --budget-name "$PROJECT-budget" \
+    --query 'Budget.CalculatedSpend.ActualSpend.Amount' \
+    --output text 2>/dev/null || true)"
+  if [[ -n "$credits" ]]; then
+    awk -v c="$credits" 'BEGIN { split(c, f, /[ \t]+/);
+      printf "     Creditos consumidos: USD %.2f de %.2f (quedan ~USD %.2f)\n", f[1], f[2], f[2] - f[1] }'
+  else
+    echo "     Creditos: sin budget (se crea en el deploy si cargaste un email)."
+  fi
+  if [[ -n "$pocket" ]]; then
+    awk -v p="$pocket" 'BEGIN { printf "     Gasto de bolsillo este mes: USD %.2f (deberia ser 0)\n", p }'
+  fi
+  echo "     Saldo exacto de creditos: Billing and Cost Management -> Credits."
+}
+
 cmd="${1:-}"
 case "$cmd" in
   deploy)
@@ -342,6 +454,10 @@ case "$cmd" in
       -var="shutdown_cron=$SHUTDOWN_CRON" \
       -var="shutdown_timezone=$SHUTDOWN_TZ" \
       -var="alert_email=$ALERT_EMAIL"
+    ;;
+  status)
+    resolve_env
+    lab_status
     ;;
   -h | --help | help)
     usage

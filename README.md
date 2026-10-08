@@ -96,6 +96,7 @@ Para destruir todo cuando termines:
 | `./lab.sh deploy [fase1\|fase2]` | Despliega el lab. `fase1` (default) = ambos FortiGate BYOL; `fase2` = FortiGate del SITE-A en PAYG + WAN2 + FortiAnalyzer. |
 | `./lab.sh plan [fase1\|fase2]`   | Muestra qué se va a crear/cambiar, sin aplicar. |
 | `./lab.sh destroy`               | Destruye todo el lab y borra el bucket de state. |
+| `./lab.sh status`                | Muestra el estado del lab sin cambiar nada: instancias (prendida/apagada, status checks, versión de FortiOS), IPs públicas, Windows conectados a SSM (y si el DC ya está en el dominio) y créditos consumidos. No necesita Terraform. |
 
 En `fase2` solo se recrea el FortiGate del SITE-A y se agrega el FortiAnalyzer;
 el SITE-B, los Windows y las IPs públicas existentes no cambian. Ver
