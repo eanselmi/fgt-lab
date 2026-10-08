@@ -10,7 +10,12 @@ resource "aws_instance" "faz" {
   subnet_id              = module.site[var.payg_site].public_subnet_ids[0]
   vpc_security_group_ids = [module.compute[var.payg_site].security_group_id]
 
-  # Disco de logs. Si la AMI ya trae /dev/sdb, esto solo le cambia el tamaño.
+  root_block_device {
+    volume_type = "gp3"
+  }
+
+  # Disco de logs: la AMI ya trae /dev/sdb (80 GB gp2); esto lo pasa a gp3
+  # (20% más barato). No se puede achicar por debajo del snapshot de la AMI.
   ebs_block_device {
     device_name           = "/dev/sdb"
     volume_size           = var.faz_log_disk_gb

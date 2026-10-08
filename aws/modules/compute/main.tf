@@ -116,6 +116,20 @@ resource "aws_instance" "fortigate" {
     }
   }
 
+  # Discos en gp3 (20% más barato que el gp2 que traen las AMI). Los tamaños son
+  # los de la AMI de FortiGate 8.0.1 (raíz 2 GB, logs 30 GB): EBS no permite
+  # achicarlos por debajo del snapshot.
+  root_block_device {
+    volume_type = "gp3"
+  }
+
+  ebs_block_device {
+    device_name           = "/dev/sdb"
+    volume_size           = 30
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
   tags = merge(var.tags, {
     Name = "${var.name}-fgt"
   })
@@ -128,6 +142,11 @@ resource "aws_instance" "windows" {
   vpc_security_group_ids      = [aws_security_group.lab.id]
   iam_instance_profile        = var.ssm_instance_profile
   associate_public_ip_address = false
+
+  # gp3 en vez del gp2 de la AMI (20% más barato, mismo tamaño).
+  root_block_device {
+    volume_type = "gp3"
+  }
 
   user_data_replace_on_change = true
   user_data = templatefile("${path.module}/windows-userdata.yaml.tftpl", {

@@ -130,9 +130,14 @@ variable "faz_instance_type" {
 }
 
 variable "faz_log_disk_gb" {
-  description = "Tamaño (GB) del disco de logs del FortiAnalyzer."
+  description = "Tamaño (GB) del disco de logs del FortiAnalyzer (/dev/sdb). La AMI 8.0.1 lo trae de 80 GB y EBS no permite achicarlo."
   type        = number
-  default     = 30
+  default     = 80
+
+  validation {
+    condition     = var.faz_log_disk_gb >= 80
+    error_message = "faz_log_disk_gb no puede ser menor a 80: es el tamaño del snapshot de la AMI de FortiAnalyzer."
+  }
 }
 
 variable "sites" {

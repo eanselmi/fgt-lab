@@ -298,9 +298,13 @@ el acceso público bloqueado.
 - El binario de Terraform (v1.15.8) y los plugins se descargan a un directorio
   temporal de CloudShell (`/tmp/fgt-lab-cache`) porque el disco persistente del
   home es de solo 1 GB. Es normal que se re-descargue (~30 s) en una sesión nueva.
-- **Costos aun con las instancias apagadas:** se siguen cobrando el almacenamiento
-  **EBS** y las **IP públicas (IPv4)** 24/7. Lo que se ahorra apagando —que es lo
-  caro— son las **horas de cómputo**. Para cortar todo, usá `./lab.sh destroy`.
+- **Costos aun con las instancias apagadas:** se siguen cobrando los discos
+  **EBS** y las **IP públicas (IPv4)** 24/7, y es el costo principal del lab:
+  en `fase1` son unos **US$ 20 por mes** aunque no prendas nada (en `fase2`,
+  más). Lo que se ahorra apagando son las horas de cómputo. **Si vas a dejar de
+  practicar más de una o dos semanas, hacé `./lab.sh destroy`** y volvé a
+  desplegar cuando retomes (los FortiGate se relicencian con tu cuenta
+  FortiCare).
 - Es un laboratorio de curso: prioriza la simplicidad. Hay concesiones a propósito
   (p. ej. password de Windows fija, security groups totalmente abiertos y GUI del
   FortiGate expuesta a internet). No usar este código tal cual en producción.
