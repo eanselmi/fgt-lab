@@ -1,16 +1,14 @@
-locals {
-  alerts_enabled = var.alert_email == "" ? 0 : 1
-}
+# Stack independiente del lab (./lab.sh budget deploy|destroy): se despliega una
+# vez al empezar el curso y no se toca con los deploy/destroy del lab, así las
+# alertas y el acumulado de créditos consumidos no se reinician.
+
+data "aws_caller_identity" "current" {}
 
 resource "aws_sns_topic" "budget_alerts" {
-  count    = local.alerts_enabled
-  provider = aws.us_east_1
-  name     = "${var.project_name}-budget-alerts"
+  name = "${var.project_name}-budget-alerts"
 }
 
 data "aws_iam_policy_document" "budget_sns" {
-  count = local.alerts_enabled
-
   statement {
     sid     = "AllowBudgetsPublish"
     effect  = "Allow"
@@ -21,7 +19,7 @@ data "aws_iam_policy_document" "budget_sns" {
       identifiers = ["budgets.amazonaws.com"]
     }
 
-    resources = [aws_sns_topic.budget_alerts[0].arn]
+    resources = [aws_sns_topic.budget_alerts.arn]
 
     condition {
       test     = "StringEquals"
@@ -32,22 +30,17 @@ data "aws_iam_policy_document" "budget_sns" {
 }
 
 resource "aws_sns_topic_policy" "budget_alerts" {
-  count    = local.alerts_enabled
-  provider = aws.us_east_1
-  arn      = aws_sns_topic.budget_alerts[0].arn
-  policy   = data.aws_iam_policy_document.budget_sns[0].json
+  arn    = aws_sns_topic.budget_alerts.arn
+  policy = data.aws_iam_policy_document.budget_sns.json
 }
 
 resource "aws_sns_topic_subscription" "budget_email" {
-  count     = local.alerts_enabled
-  provider  = aws.us_east_1
-  topic_arn = aws_sns_topic.budget_alerts[0].arn
+  topic_arn = aws_sns_topic.budget_alerts.arn
   protocol  = "email"
   endpoint  = var.alert_email
 }
 
 resource "aws_budgets_budget" "lab" {
-  count        = local.alerts_enabled
   name         = "${var.project_name}-budget"
   budget_type  = "COST"
   limit_amount = "1"
@@ -59,7 +52,7 @@ resource "aws_budgets_budget" "lab" {
     threshold                 = 50
     threshold_type            = "PERCENTAGE"
     notification_type         = "ACTUAL"
-    subscriber_sns_topic_arns = [aws_sns_topic.budget_alerts[0].arn]
+    subscriber_sns_topic_arns = [aws_sns_topic.budget_alerts.arn]
   }
 
   notification {
@@ -67,16 +60,15 @@ resource "aws_budgets_budget" "lab" {
     threshold                 = 100
     threshold_type            = "PERCENTAGE"
     notification_type         = "ACTUAL"
-    subscriber_sns_topic_arns = [aws_sns_topic.budget_alerts[0].arn]
+    subscriber_sns_topic_arns = [aws_sns_topic.budget_alerts.arn]
   }
 }
 
-# Inicio del período: el día 1 del mes del primer deploy, fijado una sola vez
-# (ignore_changes). Un budget ANNUALLY sin fecha de inicio arranca el 1/1 y se
-# resetea en enero, con lo que el acumulado de créditos consumidos volvería a 0
-# a mitad del curso. Se usa el día 1 (y no el día exacto) porque los budgets
-# recurrentes se definen por mes de inicio, y así también cuenta lo consumido
-# antes en ese mes (p. ej. las tareas de ./tasks).
+# Inicio del período del budget de créditos. Lo ideal es el mes en que se abrió
+# la cuenta (los créditos valen 12 meses desde ahí): lab.sh lo detecta con Cost
+# Explorer (primer mes con consumo) y lo pasa en var.credits_start. Si no viene,
+# se usa el día 1 del mes del primer deploy de este stack (fallback).
+# Sin fecha de inicio, un budget ANNUALLY arranca el 1/1 y se resetea en enero.
 resource "terraform_data" "credits_budget_start" {
   input = formatdate("YYYY-MM-01_00:00", plantimestamp())
 
@@ -86,13 +78,12 @@ resource "terraform_data" "credits_budget_start" {
 }
 
 resource "aws_budgets_budget" "credits" {
-  count             = local.alerts_enabled
   name              = "${var.project_name}-credits-remaining"
   budget_type       = "COST"
   limit_amount      = tostring(var.credit_total)
   limit_unit        = "USD"
   time_unit         = "ANNUALLY"
-  time_period_start = terraform_data.credits_budget_start.output
+  time_period_start = var.credits_start != "" ? var.credits_start : terraform_data.credits_budget_start.output
 
   cost_types {
     include_credit = false
@@ -103,6 +94,6 @@ resource "aws_budgets_budget" "credits" {
     threshold                 = var.credit_total - 10
     threshold_type            = "ABSOLUTE_VALUE"
     notification_type         = "ACTUAL"
-    subscriber_sns_topic_arns = [aws_sns_topic.budget_alerts[0].arn]
+    subscriber_sns_topic_arns = [aws_sns_topic.budget_alerts.arn]
   }
 }

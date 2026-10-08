@@ -80,22 +80,28 @@ En **AWS CloudShell**:
 ```bash
 git clone <URL-de-este-repo> fgt-lab
 cd fgt-lab
-./lab.sh deploy       # despliega la Fase 1 (BYOL)
+./lab.sh budget deploy   # 1) PRIMERO, una sola vez: alertas de costos por email
+./lab.sh deploy          # 2) despliega la Fase 1 (BYOL)
 ```
 
-Para destruir todo cuando termines:
+Podés hacer `./lab.sh destroy` y `./lab.sh deploy` todas las veces que quieras:
+**el budget no se toca** (es un despliegue aparte). Al **terminar el curso**:
 
 ```bash
-./lab.sh destroy
+./lab.sh destroy          # 1) destruye el lab
+./lab.sh budget destroy   # 2) elimina las alertas de costos
 ```
 
 ### Comandos
 
 | Comando | Qué hace |
 |---------|----------|
+| `./lab.sh budget deploy`         | **Primero, una sola vez.** Crea las alertas de costos por email (ver [Alertas de costos](#alertas-de-costos-por-email-budget)). Es un despliegue independiente: no lo afectan los `deploy`/`destroy` del lab. |
+| `./lab.sh budget destroy`        | Al terminar el curso: elimina las alertas y su bucket de state. |
+| `./lab.sh budget plan`           | Muestra qué crearía/cambiaría `budget deploy`, sin aplicar. |
 | `./lab.sh deploy [fase1\|fase2]` | Despliega el lab. `fase1` (default) = ambos FortiGate BYOL; `fase2` = FortiGate del SITE-A en PAYG + WAN2 + FortiAnalyzer. |
 | `./lab.sh plan [fase1\|fase2]`   | Muestra qué se va a crear/cambiar, sin aplicar. |
-| `./lab.sh destroy`               | Destruye todo el lab y borra el bucket de state. |
+| `./lab.sh destroy`               | Destruye todo el lab y borra su bucket de state. **No toca el budget.** |
 | `./lab.sh status`                | Muestra el estado del lab sin cambiar nada: instancias (prendida/apagada, status checks, versión de FortiOS), IPs públicas, Windows conectados a SSM (y si el DC ya está en el dominio) y créditos consumidos. No necesita Terraform. |
 
 En `fase2` solo se recrea el FortiGate del SITE-A y se agrega el FortiAnalyzer;
@@ -130,11 +136,11 @@ escribirla vos). No se puede saltear.
 > Elegí una hora en la que seguro no estés practicando (ej: la madrugada). Podés
 > volver a prenderlas cuando quieras.
 
-### Alerta de costos por email (budget)
+### Alertas de costos por email (budget)
 
 El lab está pensado para gastar **US$ 0** (todo cubierto por créditos). Como red
-de seguridad, el `deploy` te pide tu **correo electrónico** y crea un **budget de
-US$ 1** que te **avisa por email al 50% (US$ 0,50) y al 100% (US$ 1)** si empieza
+de seguridad, **antes que nada** corré `./lab.sh budget deploy`: te pide tu
+**correo electrónico** y crea un **budget de US$ 1** que te **avisa por email al 50% (US$ 0,50) y al 100% (US$ 1)** si empieza
 a haber gasto real de bolsillo — por ejemplo el fee de FortiOS PAYG, que **no**
 lo cubren los créditos.
 
@@ -142,17 +148,23 @@ Además se crea un **segundo budget enfocado en los créditos**: te avisa (al mi
 email) cuando te quedan **menos de US$ 10 de créditos**, para que no te agarre
 por sorpresa que se agoten.
 
-- Cuando confirmes el deploy, AWS te manda un email de **AWS Notifications** para
+- Es un **despliegue independiente del lab** (su propio state y bucket): se
+  crea una vez al empezar el curso y sigue activo aunque hagas `destroy` y
+  `deploy` del lab las veces que quieras. Si hacés `./lab.sh deploy` sin
+  haberlo creado, el script te avisa.
+- Cuando corrés `budget deploy`, AWS te manda un email de **AWS Notifications** para
   **confirmar la suscripción**: hacé clic en el link, si no, no vas a recibir los
   avisos.
 - El primer budget mide **gasto real de bolsillo** (después de aplicar créditos);
   el segundo mide **consumo de créditos** (gasto bruto, antes de créditos).
 - El total de créditos se asume en **US$ 200** (`credit_total`); si tu cuenta
   tiene otro monto, ajustá esa variable.
-- El budget de créditos cuenta desde el **día 1 del mes del primer deploy**. Si
-  hacés `./lab.sh destroy` y volvés a desplegar en otro mes, el contador arranca
-  de cero y **no incluye lo ya consumido**: el aviso de "menos de US$ 10" va a
-  llegar tarde. Revisá el saldo real en Billing → Credits.
+- El budget de créditos cuenta desde el **primer mes con consumo de tu cuenta**
+  (≈ cuando la abriste, que es desde donde corren los 12 meses de los créditos).
+  `budget deploy` lo detecta con Cost Explorer (cuesta US$ 0,01 por consulta).
+  Si Cost Explorer no responde (p. ej. cuenta recién creada), cuenta desde el
+  mes del `budget deploy`. El saldo exacto está siempre en Billing → Credits.
+- Para cambiar el email, volvé a correr `./lab.sh budget deploy` con el nuevo.
 
 ---
 
@@ -286,10 +298,17 @@ El FortiGate del SITE-B sigue BYOL. Tener en cuenta:
 
 ## State (dónde se guarda)
 
-El estado de Terraform se guarda en un bucket S3 llamado
-`fgt-lab-<TU-ACCOUNT-ID>`, que el script **crea automáticamente** en el `deploy` y
-**elimina** en el `destroy`. El bucket usa lock nativo de S3 (sin DynamoDB) y tiene
-el acceso público bloqueado.
+Hay dos despliegues de Terraform independientes, cada uno con su bucket S3 de
+state, que el script **crea automáticamente** en su `deploy` y **elimina** en su
+`destroy`:
+
+| Despliegue | Directorio | Bucket de state |
+|------------|------------|-----------------|
+| Lab (`./lab.sh deploy/destroy`) | `aws/` | `fgt-lab-<TU-ACCOUNT-ID>` |
+| Budget (`./lab.sh budget deploy/destroy`) | `budget/` | `fgt-lab-budget-<TU-ACCOUNT-ID>` |
+
+Los buckets usan lock nativo de S3 (sin DynamoDB) y tienen el acceso público
+bloqueado.
 
 ---
 

@@ -3,13 +3,19 @@
 # Wrapper del lab FortiGate. Usa el binario de Terraform en bin/terraform; si no
 # existe, lo descarga automáticamente (on-first-run) desde releases.hashicorp.com.
 #
-# El state se guarda en un bucket S3 llamado fgt-lab-<AWS_ACCOUNT_ID>, con lock
-# nativo de S3 (use_lockfile, sin DynamoDB). El bucket se crea en deploy si no
-# existe y se elimina en destroy (tras un terraform destroy exitoso).
+# Dos stacks de Terraform independientes, cada uno con su bucket S3 de state
+# (lock nativo de S3, use_lockfile, sin DynamoDB). Cada bucket se crea en su
+# deploy si no existe y se elimina en su destroy (tras un destroy exitoso):
+#   - lab    (aws/,    bucket fgt-lab-<ACCOUNT_ID>):        FortiGates, Windows, red.
+#   - budget (budget/, bucket fgt-lab-budget-<ACCOUNT_ID>): alertas de costos y
+#     créditos. Se despliega una vez al empezar y no lo afectan los deploy/destroy
+#     del lab, así el acumulado de créditos no se reinicia.
 #
 # Pensado para correr en AWS CloudShell tras un `git clone`, sin instalar nada:
+#   ./lab.sh budget deploy   # primero, una sola vez
 #   ./lab.sh deploy
 #   ./lab.sh destroy
+#   ./lab.sh budget destroy  # al terminar el curso
 #
 set -euo pipefail
 
@@ -21,6 +27,7 @@ PROJECT="fgt-lab"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWS_DIR="$SCRIPT_DIR/aws"
+BUDGET_DIR="$SCRIPT_DIR/budget"
 
 # CloudShell solo persiste ~1 GB en $HOME, insuficiente para el binario de
 # Terraform (~110 MB) + el provider de AWS descomprimido (~700 MB). Por eso el
@@ -29,13 +36,25 @@ AWS_DIR="$SCRIPT_DIR/aws"
 CACHE_DIR="${FGT_LAB_CACHE_DIR:-/tmp/fgt-lab-cache}"
 BIN_DIR="$CACHE_DIR/bin"
 TF="$BIN_DIR/terraform"
-export TF_DATA_DIR="$CACHE_DIR/tfdata"
+# Cada stack tiene su TF_DATA_DIR (ver use_stack); el provider se descarga una
+# sola vez y lo comparten por esta caché.
+export TF_PLUGIN_CACHE_DIR="$CACHE_DIR/plugins"
 
 usage() {
   cat <<EOF
 Uso: ./lab.sh <comando> [fase]
+     ./lab.sh budget <deploy|destroy|plan>
 
-Comandos:
+Comandos del budget (stack independiente, ejecutalo PRIMERO, una sola vez):
+  budget deploy          Crea las alertas por email: gasto real de bolsillo
+                         (budget de 1 USD/mes) y creditos (aviso al quedar
+                         < 10 USD). Pide tu email. No lo afectan los deploy ni
+                         los destroy del lab.
+  budget destroy         Elimina las alertas y su bucket de state (al final del
+                         curso, despues de ./lab.sh destroy).
+  budget plan            Como budget deploy pero sin aplicar (dry-run).
+
+Comandos del lab:
   deploy [fase1|fase2]   Descarga Terraform si falta, crea el bucket de state
                          (si falta), inicializa y despliega. fase1 = ambos
                          FortiGate BYOL (default); fase2 = FortiGate del
@@ -54,7 +73,7 @@ En deploy/plan se pide (obligatorio) la hora (0-23) de un apagado automático
 diario de las instancias, para no dejarlas encendidas por olvido.
 
 Binario de Terraform: $TF (v$TF_VERSION)
-Directorio Terraform:  $AWS_DIR
+Directorios Terraform: $AWS_DIR (lab), $BUDGET_DIR (budget)
 EOF
 }
 
@@ -139,7 +158,21 @@ resolve_env() {
     exit 1
   fi
 
-  BUCKET="fgt-lab-${ACCOUNT_ID}"
+}
+
+# Selecciona el stack de Terraform: directorio, bucket de state y TF_DATA_DIR.
+use_stack() {
+  case "$1" in
+    lab)
+      STACK_DIR="$AWS_DIR"
+      BUCKET="${PROJECT}-${ACCOUNT_ID}"
+      ;;
+    budget)
+      STACK_DIR="$BUDGET_DIR"
+      BUCKET="${PROJECT}-budget-${ACCOUNT_ID}"
+      ;;
+  esac
+  export TF_DATA_DIR="$CACHE_DIR/tfdata-$1"
 }
 
 ensure_state_bucket() {
@@ -162,8 +195,9 @@ ensure_state_bucket() {
 }
 
 tf_init() {
-  rm -rf "$AWS_DIR/.terraform"
-  "$TF" -chdir="$AWS_DIR" init -input=false \
+  mkdir -p "$TF_PLUGIN_CACHE_DIR"
+  rm -rf "$STACK_DIR/.terraform"
+  "$TF" -chdir="$STACK_DIR" init -input=false \
     -backend-config="bucket=$BUCKET" \
     -backend-config="region=$REGION"
 }
@@ -255,7 +289,8 @@ ask_email() {
   local email
 
   echo ""
-  echo ">> Alerta de costos: recibis un aviso por email si el gasto se acerca a 1 USD."
+  echo ">> Alertas de costos: recibis un aviso por email si hay gasto real de bolsillo"
+  echo "   (budget de 1 USD/mes) y cuando te quedan menos de 10 USD de creditos."
   while true; do
     if ! read -r -p "   Tu correo electronico para la alerta: " email; then
       echo "ERROR: se requiere un correo (entrada no interactiva)." >&2
@@ -411,49 +446,142 @@ lab_status() {
   echo "     Saldo exacto de creditos: Billing and Cost Management -> Credits."
 }
 
+# Fecha YYYY-MM-01 de hace N meses (GNU date en CloudShell, BSD date en macOS).
+month_start_ago() {
+  if date -u -d "now" >/dev/null 2>&1; then
+    date -u -d "$(date -u +%Y-%m-01) -$1 months" +%Y-%m-01
+  else
+    date -u -v1d -v-"$1"m +%Y-%m-01
+  fi
+}
+
+# Detecta el primer mes con consumo de la cuenta (≈ apertura de la cuenta, desde
+# donde corren los 12 meses de los créditos) para usarlo como inicio del budget
+# de créditos. Así un destroy + deploy no pierde lo ya consumido. Usa Cost
+# Explorer (USD 0.01 por consulta). Si falla, queda vacío y Terraform usa el mes
+# del deploy.
+detect_credits_start() {
+  local start end first
+  start="$(month_start_ago 12)"
+  end="$(date -u +%Y-%m-%d)"
+  CREDITS_START=""
+  first="$(aws ce get-cost-and-usage --region us-east-1 \
+    --time-period "Start=$start,End=$end" --granularity MONTHLY \
+    --metrics UnblendedCost \
+    --filter '{"Dimensions":{"Key":"RECORD_TYPE","Values":["Usage"]}}' \
+    --query 'ResultsByTime[?to_number(Total.UnblendedCost.Amount) > `0`] | [0].TimePeriod.Start' \
+    --output text 2>/dev/null || true)"
+  if [[ "$first" =~ ^[0-9]{4}-[0-9]{2}-01$ ]]; then
+    CREDITS_START="${first}_00:00"
+    echo ">> Budget de creditos: cuenta desde ${first:0:7} (primer mes con consumo de la cuenta)."
+  else
+    echo ">> Budget de creditos: sin datos en Cost Explorer (cuenta nueva o sin acceso); cuenta desde el mes del deploy."
+  fi
+}
+
+# destroy del stack seleccionado y, si termina bien, borra su bucket de state.
+# Sin bucket no hay state: no hay nada desplegado de este stack.
+stack_destroy() {
+  if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+    echo ">> El bucket de state $BUCKET no existe: no hay nada desplegado."
+    return
+  fi
+  tf_init
+  local vars=()
+  # destroy no usa el email, pero la variable es obligatoria en el stack budget.
+  [[ "$STACK_DIR" == "$BUDGET_DIR" ]] && vars+=(-var="alert_email=destroy@example.com")
+  "$TF" -chdir="$STACK_DIR" destroy -auto-approve ${vars[@]+"${vars[@]}"}
+  echo ">> terraform destroy OK. Eliminando bucket de state: $BUCKET"
+  aws s3 rb "s3://$BUCKET" --force
+  echo ">> Bucket $BUCKET eliminado."
+}
+
+# Avisa (sin bloquear) si las alertas de costos todavía no se desplegaron.
+warn_if_no_budget() {
+  if ! aws budgets describe-budget --region us-east-1 --account-id "$ACCOUNT_ID" \
+    --budget-name "$PROJECT-credits-remaining" >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+
+############################################################################
+## AVISO: no estan desplegadas las alertas de costos (budget).
+## Corre primero, una sola vez:   ./lab.sh budget deploy
+## Sin eso no te va a llegar ningun aviso si aparece gasto real o si te
+## quedan pocos creditos. Continuo con el deploy del lab igual.
+############################################################################
+
+EOF
+  fi
+}
+
 cmd="${1:-}"
 case "$cmd" in
   deploy)
     parse_phase "${2:-}"
     [[ "$PHASE" == "2" ]] && confirm_fase2
     ask_shutdown
-    ask_email
     ensure_terraform
     resolve_env
+    warn_if_no_budget
+    use_stack lab
     ensure_state_bucket
     tf_init
-    "$TF" -chdir="$AWS_DIR" apply -auto-approve \
+    "$TF" -chdir="$STACK_DIR" apply -auto-approve \
       -var="lab_phase=$PHASE" \
       -var="shutdown_cron=$SHUTDOWN_CRON" \
-      -var="shutdown_timezone=$SHUTDOWN_TZ" \
-      -var="alert_email=$ALERT_EMAIL"
+      -var="shutdown_timezone=$SHUTDOWN_TZ"
     ;;
   destroy)
     ensure_terraform
     resolve_env
-    tf_init
-    "$TF" -chdir="$AWS_DIR" destroy -auto-approve
-    echo ">> terraform destroy OK. Eliminando bucket de state: $BUCKET"
-    if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
-      aws s3 rb "s3://$BUCKET" --force
-      echo ">> Bucket $BUCKET eliminado."
-    else
-      echo ">> El bucket $BUCKET no existe; nada que borrar."
-    fi
+    use_stack lab
+    stack_destroy
+    echo ">> El budget (alertas de costos) NO se toca: sigue activo."
+    ;;
+  budget)
+    case "${2:-}" in
+      deploy | plan)
+        ask_email
+        ensure_terraform
+        resolve_env
+        use_stack budget
+        ensure_state_bucket
+        tf_init
+        detect_credits_start
+        if [[ "$2" == "deploy" ]]; then
+          "$TF" -chdir="$STACK_DIR" apply -auto-approve \
+            -var="alert_email=$ALERT_EMAIL" \
+            -var="credits_start=$CREDITS_START"
+        else
+          "$TF" -chdir="$STACK_DIR" plan \
+            -var="alert_email=$ALERT_EMAIL" \
+            -var="credits_start=$CREDITS_START"
+        fi
+        ;;
+      destroy)
+        ensure_terraform
+        resolve_env
+        use_stack budget
+        stack_destroy
+        ;;
+      *)
+        echo "ERROR: usá ./lab.sh budget <deploy|destroy|plan>." >&2
+        exit 1
+        ;;
+    esac
     ;;
   plan)
     parse_phase "${2:-}"
     ask_shutdown
-    ask_email
     ensure_terraform
     resolve_env
+    warn_if_no_budget
+    use_stack lab
     ensure_state_bucket
     tf_init
-    "$TF" -chdir="$AWS_DIR" plan \
+    "$TF" -chdir="$STACK_DIR" plan \
       -var="lab_phase=$PHASE" \
       -var="shutdown_cron=$SHUTDOWN_CRON" \
-      -var="shutdown_timezone=$SHUTDOWN_TZ" \
-      -var="alert_email=$ALERT_EMAIL"
+      -var="shutdown_timezone=$SHUTDOWN_TZ"
     ;;
   status)
     resolve_env
