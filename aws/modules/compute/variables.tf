@@ -8,13 +8,18 @@ variable "vpc_id" {
   type        = string
 }
 
-variable "public_subnet_id" {
-  description = "ID de la subnet pública (AZ-0) donde van las 2 WAN del FortiGate."
+variable "wan1_subnet_id" {
+  description = "ID de la subnet pública de WAN1 (port1 del FortiGate)."
   type        = string
 }
 
-variable "private_subnet_id" {
-  description = "ID de la subnet privada (AZ-0) donde van la LAN del FortiGate y el Windows."
+variable "wan2_subnet_id" {
+  description = "ID de la subnet pública de WAN2 (port3 del FortiGate). Misma AZ que WAN1."
+  type        = string
+}
+
+variable "lan_subnet_id" {
+  description = "ID de la subnet privada donde van la LAN del FortiGate (port2) y el Windows."
   type        = string
 }
 
@@ -23,13 +28,19 @@ variable "private_route_table_id" {
   type        = string
 }
 
+variable "enable_wan2" {
+  description = "Crea la 3ra ENI (WAN2, port3) con su EIP. Solo en el FortiGate PAYG: la licencia eval BYOL admite 3 interfaces en total y hay que dejar una libre para el túnel IPsec."
+  type        = bool
+  default     = false
+}
+
 variable "fortigate_ami_id" {
-  description = "ID de la AMI del FortiGate BYOL."
+  description = "ID de la AMI del FortiGate (BYOL o PAYG)."
   type        = string
 }
 
 variable "windows_ami_id" {
-  description = "ID de la AMI del Windows workstation."
+  description = "ID de la AMI del Windows."
   type        = string
 }
 
@@ -44,19 +55,30 @@ variable "windows_instance_type" {
 }
 
 variable "windows_admin_password" {
-  description = "Password del usuario Administrator del Windows."
+  description = "Password del usuario Administrator del Windows (y DSRM del AD)."
   type        = string
   sensitive   = true
 }
 
-variable "admin_cidr" {
-  description = "CIDR permitido para administrar el FortiGate (HTTPS/SSH/ICMP)."
+variable "windows_hostname" {
+  description = "Hostname del Windows (máx. 15 caracteres, NetBIOS)."
   type        = string
 }
 
-variable "lab_cidrs" {
-  description = "CIDRs de todos los sitios del lab, para permitir tráfico interno entre VPCs."
-  type        = list(string)
+variable "windows_is_dc" {
+  description = "Promueve el Windows a domain controller (AD DS + DNS + NPS)."
+  type        = bool
+  default     = false
+}
+
+variable "ad_domain_name" {
+  description = "Nombre DNS del dominio AD (solo si windows_is_dc)."
+  type        = string
+}
+
+variable "ad_netbios_name" {
+  description = "Nombre NetBIOS del dominio AD (solo si windows_is_dc)."
+  type        = string
 }
 
 variable "ssm_instance_profile" {

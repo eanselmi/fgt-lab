@@ -1,8 +1,8 @@
 output "fortigate_public_ips" {
-  description = "EIPs de las 2 WAN del FortiGate."
+  description = "EIPs del FortiGate: wan1 (port1) y wan2 (port3, null si no existe)."
   value = {
     wan1 = aws_eip.wan1.public_ip
-    wan2 = aws_eip.wan2.public_ip
+    wan2 = one(aws_eip.wan2[*].public_ip)
   }
 }
 
@@ -19,4 +19,9 @@ output "windows_instance_id" {
 output "windows_private_ip" {
   description = "IP privada del Windows."
   value       = aws_instance.windows.private_ip
+}
+
+output "security_group_id" {
+  description = "ID del security group abierto del sitio."
+  value       = aws_security_group.lab.id
 }

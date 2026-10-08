@@ -71,13 +71,28 @@ resource "aws_budgets_budget" "lab" {
   }
 }
 
+# Inicio del período: el día 1 del mes del primer deploy, fijado una sola vez
+# (ignore_changes). Un budget ANNUALLY sin fecha de inicio arranca el 1/1 y se
+# resetea en enero, con lo que el acumulado de créditos consumidos volvería a 0
+# a mitad del curso. Se usa el día 1 (y no el día exacto) porque los budgets
+# recurrentes se definen por mes de inicio, y así también cuenta lo consumido
+# antes en ese mes (p. ej. las tareas de ./tasks).
+resource "terraform_data" "credits_budget_start" {
+  input = formatdate("YYYY-MM-01_00:00", plantimestamp())
+
+  lifecycle {
+    ignore_changes = [input]
+  }
+}
+
 resource "aws_budgets_budget" "credits" {
-  count        = local.alerts_enabled
-  name         = "${var.project_name}-credits-remaining"
-  budget_type  = "COST"
-  limit_amount = tostring(var.credit_total)
-  limit_unit   = "USD"
-  time_unit    = "ANNUALLY"
+  count             = local.alerts_enabled
+  name              = "${var.project_name}-credits-remaining"
+  budget_type       = "COST"
+  limit_amount      = tostring(var.credit_total)
+  limit_unit        = "USD"
+  time_unit         = "ANNUALLY"
+  time_period_start = terraform_data.credits_budget_start.output
 
   cost_types {
     include_credit = false

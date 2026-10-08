@@ -9,18 +9,18 @@ variable "vpc_cidr" {
 }
 
 variable "public_subnet_cidrs" {
-  description = "Lista de CIDRs para las subnets públicas (una por AZ)."
+  description = "CIDRs de las subnets públicas, en orden: [WAN1, WAN2] del FortiGate."
   type        = list(string)
 }
 
 variable "private_subnet_cidrs" {
-  description = "Lista de CIDRs para las subnets privadas (una por AZ)."
+  description = "CIDRs de las subnets privadas; la primera es la LAN (FortiGate + Windows)."
   type        = list(string)
 }
 
-variable "az_names" {
-  description = "Lista de AZs a usar; la subnet de índice i va a la AZ de índice i."
-  type        = list(string)
+variable "az_name" {
+  description = "AZ de todas las subnets. Van todas en la misma AZ porque las ENI del FortiGate tienen que estar en la AZ de la instancia."
+  type        = string
 }
 
 variable "tags" {

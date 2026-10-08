@@ -1,0 +1,40 @@
+version: 1.1
+tasks:
+  - task: executeScript
+    inputs:
+      # frequency: always + script idempotente: EC2Launch v2 lo vuelve a correr
+      # en cada boot, y "exit 3010" pide un reboot y continúa en el siguiente.
+      # Así el renombre y la promoción a DC (que reinician) terminan solos.
+      - frequency: always
+        type: powershell
+        runAs: localSystem
+        content: |-
+          $ErrorActionPreference = 'Stop'
+          net user Administrator "${admin_password}"
+
+          if ($env:COMPUTERNAME -ne '${hostname}') {
+            Rename-Computer -NewName '${hostname}' -Force
+            exit 3010
+          }
+%{ if is_dc ~}
+
+          # Domain controller del lab (lecciones de Firewall Authentication y FSSO):
+          # AD DS + DNS + NPS (RADIUS).
+          $role = (Get-CimInstance Win32_ComputerSystem).DomainRole
+          if ($role -lt 4) {
+            Install-WindowsFeature AD-Domain-Services, DNS, NPAS -IncludeManagementTools
+            Import-Module ADDSDeployment
+            Install-ADDSForest `
+              -DomainName '${domain_name}' `
+              -DomainNetbiosName '${netbios_name}' `
+              -SafeModeAdministratorPassword (ConvertTo-SecureString '${admin_password}' -AsPlainText -Force) `
+              -InstallDns `
+              -NoRebootOnCompletion `
+              -Force
+            exit 3010
+          }
+
+          # El DNS del DC reenvía al resolver de la VPC: resuelve nombres
+          # públicos aunque el FortiGate todavía no tenga la salida a internet.
+          Set-DnsServerForwarder -IPAddress 169.254.169.253
+%{ endif ~}

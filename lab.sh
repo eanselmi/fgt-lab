@@ -33,14 +33,15 @@ Uso: ./lab.sh <comando> [fase]
 
 Comandos:
   deploy [fase1|fase2]   Descarga Terraform si falta, crea el bucket de state
-                         (si falta), inicializa y despliega. fase1 = FortiGate
-                         BYOL (default); fase2 = FortiGate PAYG free trial.
+                         (si falta), inicializa y despliega. fase1 = ambos
+                         FortiGate BYOL (default); fase2 = FortiGate del
+                         SITE-A en PAYG (free trial) con WAN2 + FortiAnalyzer.
   destroy                Destruye el lab y, si termina bien, elimina el bucket
                          de state aunque no esté vacío.
   plan [fase1|fase2]     Como deploy pero muestra el plan sin aplicar (dry-run).
 
-La única diferencia entre fase1 y fase2 es la AMI y el tipo de instancia del
-FortiGate; el resto (red, Windows, EIP) no cambia.
+En fase2 solo se recrea el FortiGate del SITE-A (PAYG, con WAN2) y se agrega el
+FortiAnalyzer; el SITE-B, los Windows y las EIP existentes no cambian.
 
 En deploy/plan se pide (obligatorio) la hora (0-23) de un apagado automático
 diario de las instancias, para no dejarlas encendidas por olvido.
@@ -271,14 +272,18 @@ confirm_fase2() {
 ## FASE 2 — FortiGate PAYG (free trial de 30 dias)
 ##
 ## Al desplegar la FASE 2 el lab entra en MODO ULTIMOS 30 DIAS:
-##   - Solo tiene sentido DESPUES de completar la FASE 1 (conectividad BYOL).
-##   - Arranca el free trial del FortiGate PAYG (30 dias). El trial se
-##     AUTO-CONVIERTE A PAGO el dia 30: cancela la suscripcion antes.
-##   - El fee de FortiOS PAYG es un cargo de AWS Marketplace y NO lo cubren
-##     los creditos del Free Tier.
-##   - Requiere haber aceptado la suscripcion del producto PAYG en Marketplace.
-##   - Los FortiGate se RECREAN (nueva AMI): se pierde la config de FortiOS
-##     (backup/restore), pero las EIP se conservan.
+##   - Solo tiene sentido DESPUES de completar la FASE 1.
+##   - El FortiGate del SITE-A pasa a PAYG (free trial de 30 dias, cubre UNA
+##     sola instancia) y suma WAN2 (port3). El SITE-B sigue BYOL.
+##   - El trial se AUTO-CONVIERTE A PAGO el dia 30: cancela la suscripcion
+##     antes. El fee de FortiOS PAYG es un cargo de AWS Marketplace y NO lo
+##     cubren los creditos del Free Tier.
+##   - Requiere aceptar en Marketplace las suscripciones del FortiGate PAYG y
+##     del FortiAnalyzer BYOL.
+##   - El FortiGate del SITE-A se RECREA (nueva AMI): se pierde su config de
+##     FortiOS (hace backup antes y restore despues). La EIP de WAN1 se
+##     conserva y port1/port2 mantienen su rol (WAN1/LAN).
+##   - Se agrega un FortiAnalyzer (licencia trial con tu cuenta FortiCare).
 ############################################################################
 EOF
   if ! read -r -p ">> Confirmas desplegar la FASE 2? (escribi 'si' para continuar): " answer; then

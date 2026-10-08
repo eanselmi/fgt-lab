@@ -33,13 +33,18 @@ computadora. El binario de Terraform se descarga solo.
     cambiar de plan → **Paid plan**. Los créditos se conservan (aplican 12
     meses). Hacelo **directo desde Billing**; NO uniéndote a una AWS Organization
     / Control Tower, porque eso **expira los créditos al instante**.
-- Aceptar en **AWS Marketplace** la suscripción del producto FortiGate que vayas
-  a usar (una sola vez por cuenta):
+- Aceptar en **AWS Marketplace** la suscripción de cada producto (una sola vez
+  por cuenta):
   - **Fase 1:** FortiGate VM **BYOL**.
-  - **Fase 2:** FortiGate VM **PAYG / On-Demand** (free trial 30 días).
+  - **Fase 2:** FortiGate VM **PAYG / On-Demand** (free trial 30 días) y
+    **FortiAnalyzer BYOL**. ⚠️ Suscribite al PAYG **recién al empezar la fase
+    2**, no antes, para no consumir días del trial.
 
-  Si no aceptás la suscripción, el despliegue falla al crear el FortiGate con un
+  Si no aceptás la suscripción, el despliegue falla al crear la instancia con un
   error `OptInRequired`.
+- **Dos cuentas FortiCare** (una por FortiGate BYOL): cada cuenta admite una
+  sola licencia de evaluación activa. Para relicenciar un FortiGate nuevo (por
+  ejemplo, tras un `destroy`), desasociá el anterior de la cuenta.
 
 CloudShell ya trae `git`, `aws`, `curl` y `unzip`; no hace falta instalar nada.
 
@@ -88,12 +93,13 @@ Para destruir todo cuando termines:
 
 | Comando | Qué hace |
 |---------|----------|
-| `./lab.sh deploy [fase1\|fase2]` | Despliega el lab. `fase1` (default) = FortiGate BYOL; `fase2` = FortiGate PAYG. |
+| `./lab.sh deploy [fase1\|fase2]` | Despliega el lab. `fase1` (default) = ambos FortiGate BYOL; `fase2` = FortiGate del SITE-A en PAYG + WAN2 + FortiAnalyzer. |
 | `./lab.sh plan [fase1\|fase2]`   | Muestra qué se va a crear/cambiar, sin aplicar. |
 | `./lab.sh destroy`               | Destruye todo el lab y borra el bucket de state. |
 
-La **única diferencia** entre `fase1` y `fase2` es la AMI y el tipo de instancia
-del FortiGate; la red, el Windows y las IPs públicas no cambian.
+En `fase2` solo se recrea el FortiGate del SITE-A y se agrega el FortiAnalyzer;
+el SITE-B, los Windows y las IPs públicas existentes no cambian. Ver
+[Fases del lab](#fases-del-lab).
 
 ### Apagado automático (obligatorio, para cuidar los créditos)
 
@@ -111,8 +117,9 @@ escribirla vos). No se puede saltear.
 
 - A esa hora (en punto), **todos los días**, las 4 instancias se apagan solas.
 - Solo **apaga** (nunca prende) y es inofensivo si ya estaban apagadas.
-- Complementa que las instancias se crean **apagadas**: vos las prendés para
-  practicar, y si te olvidás de apagarlas, el guardrail lo hace por vos.
+- Después de cada `deploy` las instancias quedan **prendidas** (el Windows del
+  SITE-A tiene que terminar de promoverse a domain controller, ~15 min). Si te
+  olvidás de apagarlas, el guardrail lo hace por vos a la hora elegida.
 
 > Ojo: si estás trabajando cuando llega esa hora, se te van a apagar igual.
 > Elegí una hora en la que seguro no estés practicando (ej: la madrugada). Podés
@@ -142,27 +149,53 @@ por sorpresa que se agoten.
 
 ## Qué se despliega
 
-Dos sitios (VPCs), sin solaparse para permitir el túnel entre ellos:
+Dos sitios (VPCs), sin solaparse para permitir el túnel entre ellos. Todas las
+subnets de un sitio van en la **misma AZ** (las ENI del FortiGate tienen que
+estar en la AZ de la instancia):
 
-| Sitio  | VPC CIDR        | Subnets públicas | Subnets privadas |
-|--------|-----------------|------------------|------------------|
-| SITE-A | `10.210.0.0/16` | 2 (en 2 AZ)      | 2 (en 2 AZ)      |
-| SITE-B | `10.220.0.0/16` | 2 (en 2 AZ)      | 2 (en 2 AZ)      |
+| Sitio  | VPC CIDR        | WAN1 (pública)  | WAN2 (pública)  | LAN (privada)    |
+|--------|-----------------|-----------------|-----------------|------------------|
+| SITE-A | `10.210.0.0/16` | `10.210.0.0/24` | `10.210.1.0/24` | `10.210.10.0/24` |
+| SITE-B | `10.220.0.0/16` | `10.220.0.0/24` | `10.220.1.0/24` | `10.220.10.0/24` |
 
 Por cada sitio:
 
-- **1 FortiGate** en la subnet pública AZ-0, con:
-  - **2 interfaces WAN** (2 ENIs, cada una con su **Elastic IP**) → necesarias para
-    **SD-WAN**, que requiere mínimo 2 enlaces públicos.
-  - **1 interfaz LAN** en la subnet privada, que es el gateway del Windows.
-  - `source/dest check` **deshabilitado** en las 3 interfaces (para que el FGT
-    pueda rutear/NATear el tráfico del Windows).
-- **1 Windows Server 2022** en la subnet privada, **sin IP pública**, detrás del
-  FortiGate.
-- La route table privada manda `0.0.0.0/0` a la interfaz **LAN** del FortiGate.
+- **1 FortiGate** con este mapeo de puertos (igual en todas las fases, así un
+  backup/restore entre BYOL y PAYG no cambia los nombres de interfaz):
 
-> Las instancias se crean **apagadas** para cuidar los créditos. Encendelas cuando
-> vayas a trabajar (desde la consola EC2 o con `aws ec2 start-instances`).
+  | Puerto | Rol  | Subnet | IP pública | Cuándo |
+  |--------|------|--------|------------|--------|
+  | `port1` | WAN1 | pública 1 | Elastic IP | Siempre |
+  | `port2` | LAN  | privada   | —          | Siempre (gateway del Windows) |
+  | `port3` | WAN2 | pública 2 | Elastic IP | Solo el FortiGate PAYG (fase 2), para SD-WAN/ECMP |
+
+  La licencia de evaluación BYOL admite **3 interfaces, 3 policies y 3 rutas**:
+  por eso en BYOL el FortiGate tiene solo 2 puertos y queda **una interfaz libre
+  para el túnel IPsec**.
+- **1 Windows Server 2022** en la LAN, **sin IP pública**, detrás del FortiGate.
+  - **SITE-A:** `SITEA-DC`, **domain controller** del dominio `fortilab.local`
+    (NetBIOS `FORTILAB`) con **DNS** y **NPS (RADIUS)**, para las lecciones de
+    Firewall Authentication y FSSO. Se promueve solo en el primer arranque
+    (~15 min, con 2 reinicios).
+  - **SITE-B:** `SITEB-WIN`, workstation.
+- La route table privada manda `0.0.0.0/0` a la interfaz **LAN** del FortiGate.
+- **Security groups abiertos** (todo el tráfico, entrada y salida): el lab es
+  para aprender FortiGate, así que el filtrado lo hace el FortiGate y no AWS.
+  VIP, DNAT, IPsec y administración funcionan sin tocar nada en AWS.
+- **Fase 2:** además, un **FortiAnalyzer** en la subnet WAN1 del SITE-A, con su
+  propia Elastic IP.
+
+### Fases del lab
+
+El lab sigue la **FortiOS 8.0 Administrator Study Guide**. Las versiones de
+FortiOS (FortiGate BYOL y PAYG) están fijadas en **8.0.1** para que todo el
+curso use la misma GUI.
+
+| Fase | Qué hay | Lecciones |
+|------|---------|-----------|
+| `fase1` | 2 FortiGate **BYOL** (WAN1 + LAN), DC en SITE-A | 01, 03, 04 (estático), 05, 06, 07 (conceptos), 11 (básico), 14, 15 |
+| `fase2` | FortiGate del SITE-A en **PAYG** (+WAN2) + **FortiAnalyzer**; SITE-B sigue BYOL | 02, 04 (ECMP), 07 (SSL inspection), 08, 09, 10, 11 (redundante), 12 |
+| HA (próximamente) | 2 FortiGate BYOL en cluster | 13 |
 
 ---
 
@@ -177,8 +210,7 @@ Al terminar `deploy`, Terraform imprime los **outputs** con los datos de acceso
 - **Usuario:** `admin`
 - **Password inicial:** el **instance-id** del FortiGate (output
   `fortigate_instance_ids`).
-- El acceso SSH (puerto 22) está **cerrado** a propósito; usá la GUI (tiene consola
-  CLI web).
+- El FortiGate BYOL se licencia con tu **cuenta FortiCare** al primer login.
 
 ### Windows (por Fleet Manager, sin key pair)
 
@@ -189,7 +221,8 @@ usando **AWS Systems Manager → Fleet Manager → Remote Desktop**:
 2. Seleccioná la instancia del Windows (output `windows`).
 3. **Node actions** → **Connect with Remote Desktop**.
 4. Elegí **User credentials** e ingresá:
-   - **Usuario:** `Administrator`
+   - **Usuario:** `Administrator` (en el DC del SITE-A es el administrador del
+     dominio: `FORTILAB\Administrator`)
    - **Password:** `Fortinet1!`
 
 Se abre el escritorio del Windows en el navegador, sin necesidad de key pair ni de
@@ -200,6 +233,16 @@ exponer RDP.
 > saliendo a internet **a través del FortiGate**; hasta que no configures esa
 > salida, Fleet Manager no puede conectarse.
 
+### FortiAnalyzer (fase 2)
+
+- **GUI:** `https://<public_ip>` (output `fortianalyzer`).
+- **Usuario:** `admin` — **Password inicial:** el instance-id (output
+  `fortianalyzer`).
+- Licencia trial permanente con tu cuenta FortiCare: hasta **3 dispositivos** y
+  **1 GB/día** de logs.
+- El FortiGate del SITE-A le manda logs por la IP privada; el del SITE-B, por la
+  IP pública.
+
 ---
 
 ## Fase 2 (FortiGate PAYG / free trial)
@@ -208,17 +251,22 @@ exponer RDP.
 ./lab.sh deploy fase2
 ```
 
-Esto **recrea los FortiGate** con la AMI PAYG (y un tipo con más RAM para
-FortiGuard). Tener en cuenta:
+Esto **recrea el FortiGate del SITE-A** con la AMI PAYG (y un tipo con más RAM
+para FortiGuard), le agrega **WAN2** (`port3`) y despliega el **FortiAnalyzer**.
+El FortiGate del SITE-B sigue BYOL. Tener en cuenta:
 
 - El fee de FortiOS PAYG es un **cargo de AWS Marketplace** y **NO lo cubren los
   créditos** del Free Tier.
 - El free trial **se auto-convierte a pago el día 30**: **cancelá la suscripción
   antes** (poné un recordatorio y un budget alert).
-- Requiere haber aceptado la suscripción del **producto PAYG** (distinta a la BYOL).
-- Se **conservan las Elastic IP** (van en las interfaces, no en la instancia), así
-  que la IP del túnel no cambia. Pero **se pierde la config de FortiOS** (instancia
-  nueva): hacé **backup** de la config antes y **restore** después.
+- El free trial cubre **una sola instancia**: por eso solo el SITE-A pasa a PAYG.
+- Requiere haber aceptado las suscripciones del **FortiGate PAYG** (distinta a la
+  BYOL) y del **FortiAnalyzer BYOL**.
+- Se **conserva la Elastic IP de WAN1** (va en la interfaz, no en la instancia),
+  así que la IP del túnel no cambia. Pero **se pierde la config de FortiOS**
+  (instancia nueva): hacé **backup** de la config antes y **restore** después.
+  `port1` y `port2` mantienen su rol, así que la config restaurada sigue
+  sirviendo.
 
 ---
 
@@ -240,5 +288,5 @@ el acceso público bloqueado.
   **EBS** y las **IP públicas (IPv4)** 24/7. Lo que se ahorra apagando —que es lo
   caro— son las **horas de cómputo**. Para cortar todo, usá `./lab.sh destroy`.
 - Es un laboratorio de curso: prioriza la simplicidad. Hay concesiones a propósito
-  (p. ej. password de Windows fija, acceso admin del FortiGate abierto por
-  defecto). No usar este código tal cual en producción.
+  (p. ej. password de Windows fija, security groups totalmente abiertos y GUI del
+  FortiGate expuesta a internet). No usar este código tal cual en producción.

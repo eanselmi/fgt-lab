@@ -21,7 +21,7 @@ output "sites" {
 }
 
 output "fortigate_public_ips" {
-  description = "EIPs (WAN1/WAN2) de cada FortiGate. Admin: https://<WAN1>, user admin, password = instance-id."
+  description = "EIPs de cada FortiGate: wan1 = port1, wan2 = port3 (solo el PAYG en fase 2). Admin: https://<wan1>, user admin, password inicial = instance-id."
   value = {
     for name, m in module.compute : name => m.fortigate_public_ips
   }
@@ -50,12 +50,22 @@ output "auto_shutdown" {
 }
 
 output "windows" {
-  description = "Windows por sitio: instance-id (para SSM) e IP privada."
+  description = "Windows por sitio: instance-id (para Fleet Manager/SSM), IP privada y hostname. El de ad_site es el domain controller."
   value = {
     for name, m in module.compute : name => {
       instance_id = m.windows_instance_id
       private_ip  = m.windows_private_ip
-      ssm_hint    = "aws ssm start-session --target ${m.windows_instance_id}"
+      hostname    = var.sites[name].windows_hostname
+      role        = name == var.ad_site ? "domain controller (${var.ad_domain_name}, NetBIOS ${var.ad_netbios_name}) + DNS + NPS/RADIUS" : "workstation"
     }
   }
+}
+
+output "fortianalyzer" {
+  description = "FortiAnalyzer (solo fase 2). GUI: https://<public_ip>, user admin, password inicial = instance-id."
+  value = local.phase2 ? {
+    public_ip   = aws_eip.faz[0].public_ip
+    private_ip  = aws_instance.faz[0].private_ip
+    instance_id = aws_instance.faz[0].id
+  } : null
 }
