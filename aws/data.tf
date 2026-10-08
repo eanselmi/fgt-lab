@@ -2,10 +2,6 @@ data "aws_region" "current" {}
 
 data "aws_caller_identity" "current" {}
 
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
 # most_recent solo desempata entre builds de la MISMA versión (fortios_version):
 # el filtro de nombre fija la versión para que el curso sea homogéneo.
 data "aws_ami" "fortigate_byol" {

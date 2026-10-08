@@ -18,10 +18,21 @@ locals {
   ]))
 
   # Primera AZ que ofrece todos los tipos de instancia del lab (t2.* no existe
-  # en todas las AZ).
-  lab_az = sort(setintersection([
+  # en todas las AZ). Solo se usa en el primer deploy: ver terraform_data.lab_az.
+  lab_az_candidate = sort(setintersection([
     for t in local.instance_types : toset(data.aws_ec2_instance_type_offerings.lab[t].locations)
   ]...))[0]
+}
+
+# AZ del lab, fijada en el primer deploy (ignore_changes). Si se recalculara en
+# cada plan, un cambio en los tipos ofrecidos por AWS o en un tipo de instancia
+# por variable movería la AZ y Terraform recrearía todo el lab.
+resource "terraform_data" "lab_az" {
+  input = local.lab_az_candidate
+
+  lifecycle {
+    ignore_changes = [input]
+  }
 }
 
 data "aws_ec2_instance_type_offerings" "lab" {
@@ -42,7 +53,7 @@ module "site" {
   vpc_cidr             = each.value.vpc_cidr
   public_subnet_cidrs  = each.value.public_subnet_cidrs
   private_subnet_cidrs = each.value.private_subnet_cidrs
-  az_name              = local.lab_az
+  az_name              = terraform_data.lab_az.output
 
   tags = {
     Site = each.key

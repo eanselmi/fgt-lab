@@ -19,10 +19,11 @@ resource "aws_internet_gateway" "this" {
 resource "aws_subnet" "public" {
   count = length(var.public_subnet_cidrs)
 
-  vpc_id                  = aws_vpc.this.id
-  cidr_block              = var.public_subnet_cidrs[count.index]
-  availability_zone       = var.az_name
-  map_public_ip_on_launch = true
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = var.public_subnet_cidrs[count.index]
+  availability_zone = var.az_name
+  # Sin IP pública automática: las WAN del FortiGate y el FortiAnalyzer usan EIP.
+  map_public_ip_on_launch = false
 
   tags = merge(var.tags, {
     Name = "${var.name}-public-wan${count.index + 1}"

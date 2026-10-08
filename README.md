@@ -115,11 +115,15 @@ escribirla vos). No se puede saltear.
 > de [esta tabla](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)
 > (ej: `Europe/Lisbon`, `America/Costa_Rica`) y usá la opción `11`.
 
-- A esa hora (en punto), **todos los días**, las 4 instancias se apagan solas.
+- A esa hora (en punto), **todos los días**, todas las instancias del lab se
+  apagan solas.
 - Solo **apaga** (nunca prende) y es inofensivo si ya estaban apagadas.
 - Después de cada `deploy` las instancias quedan **prendidas** (el Windows del
-  SITE-A tiene que terminar de promoverse a domain controller, ~15 min). Si te
-  olvidás de apagarlas, el guardrail lo hace por vos a la hora elegida.
+  SITE-A tiene que terminar de promoverse a domain controller, ~15 min).
+  **Si no vas a practicar en ese momento, apagalas vos** cuando termine la
+  promoción del DC (por ejemplo, cuando ya puedas entrar a `SITEA-DC` como
+  `FORTILAB\Administrator`): si no, quedan prendidas consumiendo créditos
+  hasta la hora del apagado automático, que puede ser casi un día entero.
 
 > Ojo: si estás trabajando cuando llega esa hora, se te van a apagar igual.
 > Elegí una hora en la que seguro no estés practicando (ej: la madrugada). Podés
@@ -144,6 +148,10 @@ por sorpresa que se agoten.
   el segundo mide **consumo de créditos** (gasto bruto, antes de créditos).
 - El total de créditos se asume en **US$ 200** (`credit_total`); si tu cuenta
   tiene otro monto, ajustá esa variable.
+- El budget de créditos cuenta desde el **día 1 del mes del primer deploy**. Si
+  hacés `./lab.sh destroy` y volvés a desplegar en otro mes, el contador arranca
+  de cero y **no incluye lo ya consumido**: el aviso de "menos de US$ 10" va a
+  llegar tarde. Revisá el saldo real en Billing → Credits.
 
 ---
 
@@ -194,8 +202,13 @@ curso use la misma GUI.
 | Fase | Qué hay | Lecciones |
 |------|---------|-----------|
 | `fase1` | 2 FortiGate **BYOL** (WAN1 + LAN), DC en SITE-A | 01, 03, 04 (estático), 05, 06, 07 (conceptos), 11 (básico), 14, 15 |
-| `fase2` | FortiGate del SITE-A en **PAYG** (+WAN2) + **FortiAnalyzer**; SITE-B sigue BYOL | 02, 04 (ECMP), 07 (SSL inspection), 08, 09, 10, 11 (redundante), 12 |
+| `fase2` | FortiGate del SITE-A en **PAYG** (+WAN2) + **FortiAnalyzer**; SITE-B sigue BYOL | 02, 04 (ECMP), 07 (SSL inspection), 08, 09, 10, 11 (redundante\*), 12 |
 | HA (próximamente) | 2 FortiGate BYOL en cluster | 13 |
+
+\* **VPN redundante: a validar.** El FortiGate del SITE-B (BYOL) no tiene
+interfaces para 2 túneles; la idea es que actúe como servidor **dial-up** (una
+sola interfaz de túnel que recibe los 2 túneles de WAN1 y WAN2 del SITE-A). Si no
+entra en los límites de la licencia eval, este lab queda como teoría.
 
 ---
 
