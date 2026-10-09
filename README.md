@@ -13,8 +13,6 @@ guía **en orden**. No hace falta instalar nada en tu computadora.
 > los créditos gratuitos que AWS da a las cuentas nuevas. Para eso es importante
 > seguir los pasos de costos (alertas y apagado) tal cual están.
 
-![Fase 1: dos sitios (SITE-A y SITE-B), cada uno con un FortiGate BYOL y un Windows detrás, unidos por IPsec](docs/fgt-lab-fase1.jpg)
-
 ---
 
 ## Índice
@@ -159,6 +157,8 @@ Anotá cuál vas a usar para el FortiGate del **SITE-A** y cuál para el del
 
 ## Desplegar el lab (fase 1)
 
+![Fase 1: dos sitios (SITE-A y SITE-B), cada uno con un FortiGate BYOL y un Windows detrás, unidos por IPsec](docs/fgt-lab-fase1.jpg)
+
 ```bash
 ./lab.sh deploy
 ```
@@ -273,14 +273,14 @@ viejo.
 
 ## Fase 2: features de seguridad (30 días)
 
+![Fase 2: el FortiGate del SITE-A en PAYG con WAN2 y un FortiAnalyzer; el SITE-B sigue igual](docs/fgt-lab-fase2.jpg)
+
 En la fase 1 los FortiGate usan la licencia de evaluación, que **no incluye**
 antivirus, filtro web, IPS ni control de aplicaciones, y permite como máximo 3
 interfaces, 3 policies y 3 rutas. En la fase 2 el FortiGate del **SITE-A** pasa a
 **PAYG**, con todas las features, durante la **prueba gratuita de 30 días**.
 Además se agrega un **FortiAnalyzer** (para logs) y una segunda salida a
 internet (**WAN2**, para SD-WAN). El SITE-B no cambia.
-
-![Fase 2: el FortiGate del SITE-A en PAYG con WAN2 y un FortiAnalyzer; el SITE-B sigue igual](docs/fgt-lab-fase2.jpg)
 
 > ⚠️ **Leé esto antes de empezar:**
 > - La prueba es de **30 días** y **cubre una sola máquina**.
