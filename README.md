@@ -69,7 +69,9 @@ guía **en orden**. No hace falta instalar nada en tu computadora.
 
 1. Entrá a la consola de AWS: <https://console.aws.amazon.com>.
 2. Arriba a la derecha, elegí la región **N. Virginia (`us-east-1`)**. Usá
-   siempre esta región en todo el curso.
+   siempre esta región en todo el curso. El script crea el lab siempre en
+   N. Virginia: si tu consola está en otra región, te avisa, y no vas a ver los
+   recursos hasta que la cambies.
 3. Abrí **CloudShell**: es el ícono de terminal (`>_`) en la barra de arriba (o
    buscá "CloudShell" en el buscador de la consola). Tarda un minuto la primera
    vez.
@@ -259,7 +261,7 @@ Aunque estén **apagadas**, AWS cobra (de tus créditos) los **discos** y las
 **más de una o dos semanas**, borrá el lab y volvé a crearlo al retomar:
 
 ```bash
-./lab.sh destroy     # borra el lab (las alertas de costos siguen activas)
+./lab.sh destroy     # borra el lab (pide confirmar con 'si'; las alertas de costos siguen activas)
 # ... cuando retomes:
 ./lab.sh deploy
 ```
@@ -285,8 +287,10 @@ internet (**WAN2**, para SD-WAN). El SITE-B no cambia.
 > ⚠️ **Leé esto antes de empezar:**
 > - La prueba es de **30 días** y **cubre una sola máquina**.
 > - Al día 30 **se convierte sola en pago**, y ese pago **NO lo cubren los
->   créditos**: sale de tu tarjeta (unos US$ 0,88 por hora). **Agendá un
->   recordatorio** para terminar la fase 2 antes del día 30.
+>   créditos**: sale de tu tarjeta (unos US$ 0,88 por cada hora que el
+>   FortiGate PAYG está **prendido**; apagado no cobra licencia). **Agendá un
+>   recordatorio** para terminar la fase 2 antes del día 30. `./lab.sh status`
+>   te muestra en qué día del trial estás y cuándo vence.
 > - Hacela **después** de completar los labs de la fase 1.
 
 ### Empezar la fase 2
@@ -312,12 +316,13 @@ internet (**WAN2**, para SD-WAN). El SITE-B no cambia.
    **Restore**.
 5. El **FortiAnalyzer** aparece en `./lab.sh status`: entrá a `https://<su-IP>`
    con usuario `admin` y su instance-id como contraseña, y activá su licencia de
-   prueba con tu cuenta FortiCare.
+   prueba con tu **segunda cuenta FortiCare** (la misma en la que registrás el
+   FortiGate PAYG).
 
 ### Terminar la fase 2 (antes del día 30)
 
 1. Volvé a la fase 1 (borra el FortiGate PAYG y el FortiAnalyzer y recrea el
-   FortiGate BYOL del SITE-A):
+   FortiGate BYOL del SITE-A). Te pide confirmar escribiendo `si`:
 
    ```bash
    ./lab.sh deploy fase1
@@ -374,10 +379,10 @@ para usarlo.
 | `./lab.sh budget deploy`         | **Primero, una sola vez.** Crea las alertas de costos por email. Es un despliegue independiente: no lo afectan los `deploy`/`destroy` del lab. |
 | `./lab.sh budget destroy`        | Al terminar el curso: elimina las alertas y su bucket de state. |
 | `./lab.sh budget plan`           | Muestra qué crearía/cambiaría `budget deploy`, sin aplicar. |
-| `./lab.sh deploy [fase1\|fase2]` | Despliega el lab. `fase1` (default) = ambos FortiGate BYOL; `fase2` = FortiGate del SITE-A en PAYG + WAN2 + FortiAnalyzer. |
+| `./lab.sh deploy [fase1\|fase2]` | Despliega el lab. `fase1` = ambos FortiGate BYOL; `fase2` = FortiGate del SITE-A en PAYG + WAN2 + FortiAnalyzer. Sin fase, mantiene la que está desplegada (`fase1` si no hay lab). Pasar de `fase2` a `fase1` pide confirmar con `si`. |
 | `./lab.sh plan [fase1\|fase2]`   | Muestra qué se va a crear/cambiar, sin aplicar. |
-| `./lab.sh destroy`               | Destruye todo el lab y borra su bucket de state. **No toca el budget.** |
-| `./lab.sh status`                | Estado del lab sin cambiar nada: instancias (prendida/apagada, status checks, versión de FortiOS), IPs públicas, Windows conectados a SSM (y si el DC ya está en el dominio) y créditos consumidos. No necesita Terraform. |
+| `./lab.sh destroy`               | Destruye todo el lab y borra su bucket de state (pide confirmar con `si`). **No toca el budget.** |
+| `./lab.sh status`                | Estado del lab sin cambiar nada: instancias (prendida/apagada, status checks, versión de FortiOS), IPs públicas, Windows conectados a SSM (y si el DC ya está en el dominio), día del trial PAYG (en fase 2) y créditos consumidos. No necesita Terraform. |
 
 ### Topología
 

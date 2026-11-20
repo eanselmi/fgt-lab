@@ -2,10 +2,6 @@
 *.md
 !README.md
 
-# Terraform binary: se descarga on-first-run desde lab.sh, no se commitea
-# (excede el límite de 100 MB por archivo de GitHub).
-bin/terraform
-
 # macOS
 .DS_Store
 

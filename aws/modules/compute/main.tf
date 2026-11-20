@@ -90,8 +90,22 @@ resource "aws_eip_association" "wan2" {
   network_interface_id = aws_network_interface.wan2[0].id
 }
 
+# AMI del FortiGate, fijada al crearlo (ignore_changes). Si Fortinet republica
+# un build de la misma versión, el data source cambia de ID y sin esto se
+# recrearía el FortiGate (y se perdería su config de FortiOS). Solo un cambio de
+# licencia (BYOL <-> PAYG, al cambiar de fase) reemplaza este recurso y, con su
+# nuevo output, la instancia.
+resource "terraform_data" "fortigate_ami" {
+  input            = var.fortigate_ami_id
+  triggers_replace = var.enable_wan2 ? "payg" : "byol"
+
+  lifecycle {
+    ignore_changes = [input]
+  }
+}
+
 resource "aws_instance" "fortigate" {
-  ami           = var.fortigate_ami_id
+  ami           = terraform_data.fortigate_ami.output
   instance_type = var.fgt_instance_type
 
   # El bloque network_interface está deprecado en el provider 6.x, pero se

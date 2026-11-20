@@ -4,6 +4,12 @@ variable "project_name" {
   default     = "fgt-lab"
 }
 
+variable "region" {
+  description = "Región del lab. Fija: sizing, precios y AMI del Marketplace están validados en us-east-1 (lab.sh también la fija)."
+  type        = string
+  default     = "us-east-1"
+}
+
 variable "lab_phase" {
   description = "Fase del lab: '1' = ambos FortiGate BYOL (eval); '2' = el FortiGate de payg_site pasa a PAYG (trial) con WAN2, y se agrega el FortiAnalyzer."
   type        = string

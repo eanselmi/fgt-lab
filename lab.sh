@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Wrapper del lab FortiGate. Usa el binario de Terraform en bin/terraform; si no
-# existe, lo descarga automáticamente (on-first-run) desde releases.hashicorp.com.
+# Wrapper del lab FortiGate. Descarga Terraform automáticamente (on-first-run)
+# desde releases.hashicorp.com a un caché en /tmp (ver CACHE_DIR).
 #
 # Dos stacks de Terraform independientes, cada uno con su bucket S3 de state
 # (lock nativo de S3, use_lockfile, sin DynamoDB). Cada bucket se crea en su
@@ -24,6 +24,16 @@ TF_VERSION="1.15.8"
 # Valor de var.project_name en Terraform: todos los recursos del lab llevan el
 # tag Project=<esto> (default_tags) y los budgets se llaman <esto>-*.
 PROJECT="fgt-lab"
+
+# Región fija del lab (sizing, precios y AMI del Marketplace validados acá). No
+# se toma la de CloudShell: si el alumno la abre en otra región, el lab igual
+# va a us-east-1 y el bucket de state se sigue encontrando.
+REGION="us-east-1"
+
+# Parámetro SSM con la fecha (YYYY-MM-DD) del primer deploy de la fase 2, para
+# que status muestre el día del trial PAYG. No se borra con los destroy: el
+# trial es uno solo por cuenta.
+TRIAL_PARAM="/$PROJECT/payg-trial-start"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWS_DIR="$SCRIPT_DIR/aws"
@@ -57,13 +67,16 @@ Comandos del budget (stack independiente, ejecutalo PRIMERO, una sola vez):
 Comandos del lab:
   deploy [fase1|fase2]   Descarga Terraform si falta, crea el bucket de state
                          (si falta), inicializa y despliega. fase1 = ambos
-                         FortiGate BYOL (default); fase2 = FortiGate del
-                         SITE-A en PAYG (free trial) con WAN2 + FortiAnalyzer.
-  destroy                Destruye el lab y, si termina bien, elimina el bucket
-                         de state aunque no esté vacío.
+                         FortiGate BYOL; fase2 = FortiGate del SITE-A en PAYG
+                         (free trial) con WAN2 + FortiAnalyzer. Sin fase,
+                         mantiene la fase desplegada (fase1 si no hay lab).
+                         Volver de fase2 a fase1 pide confirmacion.
+  destroy                Destruye el lab (pide confirmacion) y, si termina
+                         bien, elimina el bucket de state aunque no esté vacío.
   plan [fase1|fase2]     Como deploy pero muestra el plan sin aplicar (dry-run).
   status                 Muestra el estado del lab (instancias, status checks,
-                         IPs publicas, Windows/SSM y creditos) sin cambiar nada.
+                         IPs publicas, Windows/SSM, dia del trial PAYG y
+                         creditos) sin cambiar nada.
                          Solo usa la AWS CLI: no necesita Terraform.
 
 En fase2 solo se recrea el FortiGate del SITE-A (PAYG, con WAN2) y se agrega el
@@ -128,16 +141,24 @@ ensure_terraform() {
 
   curl -fsSL -o "$tmp/$zip" "$url"
 
-  if curl -fsSL -o "$tmp/SHA256SUMS" \
+  # El checksum es obligatorio: sin SHA256SUMS o sin herramienta de hash no se
+  # instala un binario sin verificar.
+  if ! curl -fsSL -o "$tmp/SHA256SUMS" \
     "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_SHA256SUMS"; then
-    expected="$(awk -v f="$zip" '$2 == f {print $1}' "$tmp/SHA256SUMS")"
-    actual="$(sha256_of "$tmp/$zip")"
-    if [[ -n "$expected" && -n "$actual" && "$expected" != "$actual" ]]; then
-      echo "ERROR: checksum inválido para $zip." >&2
-      echo "  esperado: $expected" >&2
-      echo "  obtenido: $actual" >&2
-      exit 1
-    fi
+    echo "ERROR: no se pudo descargar el SHA256SUMS de Terraform; no se instala sin verificar." >&2
+    exit 1
+  fi
+  expected="$(awk -v f="$zip" '$2 == f {print $1}' "$tmp/SHA256SUMS")"
+  actual="$(sha256_of "$tmp/$zip")"
+  if [[ -z "$expected" || -z "$actual" ]]; then
+    echo "ERROR: no se pudo verificar el checksum de $zip (falta en SHA256SUMS o no hay sha256sum/shasum)." >&2
+    exit 1
+  fi
+  if [[ "$expected" != "$actual" ]]; then
+    echo "ERROR: checksum inválido para $zip." >&2
+    echo "  esperado: $expected" >&2
+    echo "  obtenido: $actual" >&2
+    exit 1
   fi
 
   unzip -o -q "$tmp/$zip" terraform -d "$BIN_DIR"
@@ -146,18 +167,44 @@ ensure_terraform() {
 }
 
 resolve_env() {
-  ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-  REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region 2>/dev/null || true)}}"
+  local console_region
+  console_region="${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region 2>/dev/null || true)}}"
+  # El provider de Terraform y la AWS CLI toman la región de acá.
+  export AWS_REGION="$REGION" AWS_DEFAULT_REGION="$REGION"
 
+  ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
   if [[ -z "$ACCOUNT_ID" || "$ACCOUNT_ID" == "None" ]]; then
     echo "ERROR: no se pudo obtener el AWS Account ID. ¿Hay credenciales activas?" >&2
     exit 1
   fi
-  if [[ -z "$REGION" ]]; then
-    echo "ERROR: no se pudo determinar la región (AWS_REGION / AWS_DEFAULT_REGION)." >&2
-    exit 1
-  fi
 
+  if [[ -n "$console_region" && "$console_region" != "$REGION" ]]; then
+    cat >&2 <<EOF
+
+>> AVISO: tu CloudShell/consola esta en la region $console_region, pero el lab
+   siempre va a $REGION (N. Virginia). Cambia la region de la consola (arriba
+   a la derecha) a N. Virginia para ver los recursos del lab.
+
+EOF
+  fi
+}
+
+# Fase desplegada, deducida de EC2 (el FortiAnalyzer solo existe en fase 2).
+# Queda vacía si no hay instancias del lab.
+detect_current_phase() {
+  local names
+  names="$(aws ec2 describe-instances --region "$REGION" \
+    --filters "Name=tag:Project,Values=$PROJECT" \
+    "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+    --query 'Reservations[].Instances[].[Tags[?Key==`Name`]|[0].Value]' \
+    --output text)"
+  if grep -q -- '-faz$' <<<"$names"; then
+    CURRENT_PHASE="2"
+  elif [[ -n "$names" ]]; then
+    CURRENT_PHASE="1"
+  else
+    CURRENT_PHASE=""
+  fi
 }
 
 # Selecciona el stack de Terraform: directorio, bucket de state y TF_DATA_DIR.
@@ -202,8 +249,16 @@ tf_init() {
     -backend-config="region=$REGION"
 }
 
+# Sin fase explícita mantiene la desplegada (CURRENT_PHASE), así un
+# `./lab.sh deploy` de costumbre no baja de fase 2 a fase 1.
 parse_phase() {
-  case "${1:-fase1}" in
+  case "${1:-}" in
+    "")
+      PHASE="${CURRENT_PHASE:-1}"
+      if [[ -n "$CURRENT_PHASE" ]]; then
+        echo ">> Sin fase indicada: se mantiene la fase desplegada (fase$PHASE)."
+      fi
+      ;;
     fase1) PHASE=1 ;;
     fase2) PHASE=2 ;;
     *)
@@ -306,8 +361,23 @@ ask_email() {
   echo "   Vas a recibir un email de AWS Notifications para CONFIRMAR la suscripcion: aceptalo."
 }
 
-confirm_fase2() {
+# Pide escribir 'si' para continuar; cualquier otra respuesta cancela.
+confirm_si() {
   local answer
+  if ! read -r -p ">> $1 (escribi 'si' para continuar): " answer; then
+    echo ">> Cancelado (entrada no interactiva)." >&2
+    exit 1
+  fi
+  case "$answer" in
+    si | Si | SI | s | S) ;;
+    *)
+      echo ">> Cancelado. No se hizo ningun cambio." >&2
+      exit 1
+      ;;
+  esac
+}
+
+confirm_fase2() {
   cat >&2 <<'EOF'
 
 ############################################################################
@@ -326,19 +396,69 @@ confirm_fase2() {
 ##     FortiOS (hace backup antes y restore despues). La EIP de WAN1 se
 ##     conserva y port1/port2 mantienen su rol (WAN1/LAN).
 ##   - Se agrega un FortiAnalyzer (licencia trial con tu cuenta FortiCare).
+##   - ./lab.sh status muestra en que dia del trial estas.
 ############################################################################
 EOF
-  if ! read -r -p ">> Confirmas desplegar la FASE 2? (escribi 'si' para continuar): " answer; then
-    echo ">> Cancelado (entrada no interactiva)." >&2
-    exit 1
+  confirm_si "Confirmas desplegar la FASE 2?"
+}
+
+confirm_fase1() {
+  cat >&2 <<'EOF'
+
+############################################################################
+## VOLVER A FASE 1 — el lab esta hoy en FASE 2
+##
+##   - Se BORRA el FortiAnalyzer y el FortiGate PAYG del SITE-A, que se
+##     recrea como BYOL: se pierde su config de FortiOS (hace backup antes).
+##   - Si solo querias redesplegar la fase 2, cancela y corre:
+##       ./lab.sh deploy fase2
+##   - Despues cancela la suscripcion PAYG en Marketplace (ver README).
+############################################################################
+EOF
+  confirm_si "Confirmas volver a la FASE 1?"
+}
+
+# Guarda la fecha de inicio del trial PAYG si todavía no existe (sin
+# --overwrite, put-parameter falla y se conserva la fecha original).
+record_trial_start() {
+  if aws ssm put-parameter --region "$REGION" --name "$TRIAL_PARAM" \
+    --type String --value "$(date -u +%Y-%m-%d)" \
+    --tags "Key=Project,Value=$PROJECT" >/dev/null 2>&1; then
+    echo ">> Inicio del trial PAYG registrado: $(date -u +%Y-%m-%d). Segui los dias con ./lab.sh status."
   fi
-  case "$answer" in
-    si | Si | SI | s | S) ;;
-    *)
-      echo ">> Cancelado. No se despliega la fase 2." >&2
-      exit 1
-      ;;
-  esac
+}
+
+# Epoch de una fecha YYYY-MM-DD y fecha DD/MM/YYYY de un epoch (GNU date en
+# CloudShell, BSD date en macOS).
+epoch_of_date() {
+  date -u -d "$1" +%s 2>/dev/null || date -u -j -f "%Y-%m-%d %H:%M:%S" "$1 00:00:00" +%s
+}
+date_of_epoch() {
+  date -u -d "@$1" +%d/%m/%Y 2>/dev/null || date -u -r "$1" +%d/%m/%Y
+}
+
+# Día del trial PAYG (solo si la fase 2 está desplegada).
+trial_status() {
+  local start start_epoch day end
+  start="$(aws ssm get-parameter --region "$REGION" --name "$TRIAL_PARAM" \
+    --query Parameter.Value --output text 2>/dev/null || true)"
+  echo ""
+  if [[ ! "$start" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "   Trial PAYG (fase 2): sin fecha registrada. Revisala en Marketplace -> Manage subscriptions."
+    return
+  fi
+  start_epoch="$(epoch_of_date "$start")"
+  day=$(( ($(date -u +%s) - start_epoch) / 86400 + 1 ))
+  end="$(date_of_epoch $(( start_epoch + 30 * 86400 )))"
+  if (( day <= 30 )); then
+    echo "   Trial PAYG (fase 2): dia $day de 30, vence el $end."
+    echo "     Antes de esa fecha volve a fase 1 y cancela la suscripcion PAYG (ver README)."
+  else
+    echo "   Trial PAYG (fase 2): VENCIDO el $end (dia $day). El FortiGate PAYG ya se cobra"
+    echo "     (~US\$ 0,88 por hora prendido, NO lo cubren los creditos): volve a fase 1 YA."
+  fi
+  echo "     (Fecha aproximada: cuenta desde el primer deploy de la fase 2; el trial real"
+  echo "      arranca al suscribirte en Marketplace.)"
 }
 
 lab_status() {
@@ -393,6 +513,10 @@ lab_status() {
       else sw = "-"
       printf "     %-14s %-20s %-9s %-10s %-10s %s\n", $2, $1, $3, $4, (chk[$1] == "" ? "-" : chk[$1]), sw
     }' "$tmp/inst" | sort
+
+  if awk -F'\t' '$2 ~ /-faz$/ {found = 1} END {exit !found}' "$tmp/inst"; then
+    trial_status
+  fi
 
   echo ""
   echo "   IPs publicas (GUI: https://<IP>, usuario admin, password inicial = instance-id):"
@@ -479,13 +603,17 @@ detect_credits_start() {
   fi
 }
 
-# destroy del stack seleccionado y, si termina bien, borra su bucket de state.
-# Sin bucket no hay state: no hay nada desplegado de este stack.
+# destroy del stack seleccionado (tras confirmar con $1 como descripción) y, si
+# termina bien, borra su bucket de state. Sin bucket no hay state: no hay nada
+# desplegado de este stack.
 stack_destroy() {
   if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
     echo ">> El bucket de state $BUCKET no existe: no hay nada desplegado."
     return
   fi
+  echo "" >&2
+  echo ">> Se va a BORRAR: $1" >&2
+  confirm_si "Confirmas el destroy?"
   tf_init
   local vars=()
   # destroy no usa el email, pero la variable es obligatoria en el stack budget.
@@ -516,11 +644,16 @@ EOF
 cmd="${1:-}"
 case "$cmd" in
   deploy)
+    resolve_env
+    detect_current_phase
     parse_phase "${2:-}"
-    [[ "$PHASE" == "2" ]] && confirm_fase2
+    if [[ "$PHASE" == "2" && "$CURRENT_PHASE" != "2" ]]; then
+      confirm_fase2
+    elif [[ "$PHASE" == "1" && "$CURRENT_PHASE" == "2" ]]; then
+      confirm_fase1
+    fi
     ask_shutdown
     ensure_terraform
-    resolve_env
     warn_if_no_budget
     use_stack lab
     ensure_state_bucket
@@ -529,12 +662,15 @@ case "$cmd" in
       -var="lab_phase=$PHASE" \
       -var="shutdown_cron=$SHUTDOWN_CRON" \
       -var="shutdown_timezone=$SHUTDOWN_TZ"
+    if [[ "$PHASE" == "2" ]]; then
+      record_trial_start
+    fi
     ;;
   destroy)
     ensure_terraform
     resolve_env
     use_stack lab
-    stack_destroy
+    stack_destroy "todo el lab (FortiGates, Windows, red, EIP) y su bucket de state. Se pierden las configs de FortiOS (hace backup antes)."
     echo ">> El budget (alertas de costos) NO se toca: sigue activo."
     ;;
   budget)
@@ -561,7 +697,7 @@ case "$cmd" in
         ensure_terraform
         resolve_env
         use_stack budget
-        stack_destroy
+        stack_destroy "las alertas de costos (budgets) y su bucket de state. Dejas de recibir avisos de gasto."
         ;;
       *)
         echo "ERROR: usá ./lab.sh budget <deploy|destroy|plan>." >&2
@@ -570,10 +706,11 @@ case "$cmd" in
     esac
     ;;
   plan)
+    resolve_env
+    detect_current_phase
     parse_phase "${2:-}"
     ask_shutdown
     ensure_terraform
-    resolve_env
     warn_if_no_budget
     use_stack lab
     ensure_state_bucket
