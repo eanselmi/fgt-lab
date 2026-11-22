@@ -51,7 +51,19 @@ guía **en orden**. No hace falta instalar nada en tu computadora.
 
 ## Antes de empezar (una sola vez)
 
-### Paso 1 — Crear la cuenta de AWS en "Paid plan"
+### Paso 1 — Crear dos cuentas FortiCare
+
+Cada FortiGate del lab usa una **licencia de evaluación gratuita**, y cada
+cuenta de Fortinet admite **una sola**. Necesitás **dos cuentas** (una por
+FortiGate):
+
+1. Registrate en <https://support.fortinet.com> (**Register**) con un email.
+2. Repetí con **otro email** para la segunda cuenta.
+
+Anotá cuál vas a usar para el FortiGate del **SITE-A** y cuál para el del
+**SITE-B**.
+
+### Paso 2 — Crear la cuenta de AWS en "Paid plan"
 
 1. Registrate en <https://aws.amazon.com> (pide tarjeta, pero con los créditos
    no se cobra nada).
@@ -65,7 +77,7 @@ guía **en orden**. No hace falta instalar nada en tu computadora.
    conservan. Hacelo **desde Billing**; nunca uniendo la cuenta a una "AWS
    Organization", porque eso **anula los créditos**.
 
-### Paso 2 — Elegir la región y abrir CloudShell
+### Paso 3 — Elegir la región y abrir CloudShell
 
 1. Entrá a la consola de AWS: <https://console.aws.amazon.com>.
 2. Arriba a la derecha, elegí la región **N. Virginia (`us-east-1`)**. Usá
@@ -79,7 +91,7 @@ guía **en orden**. No hace falta instalar nada en tu computadora.
 Todos los comandos de esta guía se **copian y pegan en CloudShell** y se
 ejecutan con Enter.
 
-### Paso 3 — Descargar el lab
+### Paso 4 — Descargar el lab
 
 En CloudShell:
 
@@ -91,7 +103,7 @@ cd fgt-lab
 > Cada vez que abras CloudShell en otro momento, entrá a la carpeta con
 > `cd fgt-lab` antes de correr los comandos.
 
-### Paso 4 — Ganar los créditos extra (opcional, recomendado)
+### Paso 5 — Ganar los créditos extra (opcional, recomendado)
 
 Las cuentas nuevas pueden ganar **US$ 100 más** completando 5 tareas simples. El
 lab trae un script que las hace solo:
@@ -112,7 +124,7 @@ creó el script para no gastar de más:
 > buscá **Amazon Bedrock** → **Playground** (chat) → elegí un modelo → mandá
 > cualquier mensaje.
 
-### Paso 5 — Activar las alertas de costos (obligatorio)
+### Paso 6 — Activar las alertas de costos (obligatorio)
 
 ```bash
 ./lab.sh budget deploy
@@ -129,7 +141,7 @@ clic en **Confirm subscription**; si no, **no te llegan los avisos**.
 Este paso se hace **una sola vez**: las alertas siguen activas aunque borres y
 vuelvas a crear el lab muchas veces.
 
-### Paso 6 — Suscribirte al FortiGate en Marketplace
+### Paso 7 — Suscribirte al FortiGate en Marketplace
 
 1. En la consola de AWS, buscá **AWS Marketplace** → **Discover products**.
 2. Buscá **FortiGate BYOL** y abrí el producto de **Fortinet** cuyo nombre
@@ -142,18 +154,6 @@ Si te salteás este paso, el despliegue falla con el error `OptInRequired`.
 
 > El producto **PAYG** y el **FortiAnalyzer** se suscriben recién en la
 > [fase 2](#fase-2-features-de-seguridad-30-días), **no antes**.
-
-### Paso 7 — Crear dos cuentas FortiCare
-
-Cada FortiGate del lab usa una **licencia de evaluación gratuita**, y cada
-cuenta de Fortinet admite **una sola**. Necesitás **dos cuentas** (una por
-FortiGate):
-
-1. Registrate en <https://support.fortinet.com> (**Register**) con un email.
-2. Repetí con **otro email** para la segunda cuenta.
-
-Anotá cuál vas a usar para el FortiGate del **SITE-A** y cuál para el del
-**SITE-B**.
 
 ---
 
@@ -299,7 +299,7 @@ internet (**WAN2**, para SD-WAN). El SITE-B no cambia.
    usuario `admin` (arriba a la derecha) → **Configuration** → **Backup**.
    Guardá el archivo en tu computadora.
 2. **Suscribite en Marketplace** (igual que en el
-   [paso 6](#paso-6--suscribirte-al-fortigate-en-marketplace)) a:
+   [paso 7](#paso-7--suscribirte-al-fortigate-en-marketplace)) a:
    - **Fortinet FortiGate Next-Generation Firewall** (el **PAYG**, con
      "Free trial"; producto
      <https://aws.amazon.com/marketplace/pp/prodview-wory773oau6wq>).
@@ -353,8 +353,8 @@ Si llegaste a la fase 2, verificá que la suscripción PAYG esté **cancelada**
 
 | Problema | Solución |
 |----------|----------|
-| El deploy falla con `OptInRequired` | Falta suscribirte al producto en Marketplace ([paso 6](#paso-6--suscribirte-al-fortigate-en-marketplace); en fase 2, también PAYG y FortiAnalyzer). |
-| El deploy falla con `not eligible for Free Tier` | Tu cuenta está en **Free plan**: pasala a **Paid plan** ([paso 1](#paso-1--crear-la-cuenta-de-aws-en-paid-plan)). |
+| El deploy falla con `OptInRequired` | Falta suscribirte al producto en Marketplace ([paso 7](#paso-7--suscribirte-al-fortigate-en-marketplace); en fase 2, también PAYG y FortiAnalyzer). |
+| El deploy falla con `not eligible for Free Tier` | Tu cuenta está en **Free plan**: pasala a **Paid plan** ([paso 2](#paso-2--crear-la-cuenta-de-aws-en-paid-plan)). |
 | `./lab.sh: No such file or directory` | No estás en la carpeta del lab: corré `cd fgt-lab`. |
 | El navegador dice "la conexión no es privada" al entrar al FortiGate | Es normal: **Avanzado → Continuar al sitio**. |
 | No puedo entrar al FortiGate | ¿Está prendido? Mirá `./lab.sh status`. La contraseña inicial es el **instance-id** (empieza con `i-`). |
