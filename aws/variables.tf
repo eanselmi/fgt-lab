@@ -61,7 +61,7 @@ variable "shutdown_timezone" {
 variable "fortios_version" {
   description = "Versión de FortiOS de las AMI del FortiGate (BYOL y PAYG). Fija para que todo el curso use la misma GUI."
   type        = string
-  default     = "8.0.1"
+  default     = "8.0.2"
 }
 
 variable "fortigate_byol_ami_name_filter" {
@@ -103,7 +103,7 @@ variable "ad_netbios_name" {
 variable "faz_version" {
   description = "Versión de la AMI de FortiAnalyzer (fase 2). Tiene que ser igual o mayor que la de FortiOS."
   type        = string
-  default     = "8.0.1"
+  default     = "8.0.2"
 }
 
 variable "faz_ami_name_filter" {
@@ -119,7 +119,7 @@ variable "faz_instance_type" {
 }
 
 variable "faz_log_disk_gb" {
-  description = "Tamaño (GB) del disco de logs del FortiAnalyzer (/dev/sdb). La AMI 8.0.1 lo trae de 80 GB y EBS no permite achicarlo."
+  description = "Tamaño (GB) del disco de logs del FortiAnalyzer (/dev/sdb). La AMI 8.0.2 lo trae de 80 GB y EBS no permite achicarlo."
   type        = number
   default     = 80
 

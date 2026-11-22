@@ -4,9 +4,14 @@ data "aws_caller_identity" "current" {}
 
 # most_recent solo desempata entre builds de la MISMA versión (fortios_version):
 # el filtro de nombre fija la versión para que el curso sea homogéneo.
+# include_deprecated: Fortinet depreca la AMI de una versión cuando publica la
+# siguiente (8.0.1 quedó deprecada el 2026-10-21) y, sin esto, la búsqueda
+# falla con "no results" a mitad del curso. Una AMI deprecada se sigue pudiendo
+# lanzar.
 data "aws_ami" "fortigate_byol" {
-  most_recent = true
-  owners      = ["aws-marketplace"]
+  most_recent        = true
+  include_deprecated = true
+  owners             = ["aws-marketplace"]
 
   filter {
     name   = "name"
@@ -21,9 +26,10 @@ data "aws_ami" "fortigate_byol" {
 
 # Solo se busca en fase 2: en fase 1 no hace falta la suscripción PAYG.
 data "aws_ami" "fortigate_payg" {
-  count       = var.lab_phase == "2" ? 1 : 0
-  most_recent = true
-  owners      = ["aws-marketplace"]
+  count              = var.lab_phase == "2" ? 1 : 0
+  most_recent        = true
+  include_deprecated = true
+  owners             = ["aws-marketplace"]
 
   filter {
     name   = "name"
@@ -37,9 +43,10 @@ data "aws_ami" "fortigate_payg" {
 }
 
 data "aws_ami" "faz" {
-  count       = var.lab_phase == "2" ? 1 : 0
-  most_recent = true
-  owners      = ["aws-marketplace"]
+  count              = var.lab_phase == "2" ? 1 : 0
+  most_recent        = true
+  include_deprecated = true
+  owners             = ["aws-marketplace"]
 
   filter {
     name   = "name"

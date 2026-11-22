@@ -417,7 +417,7 @@ BYOL y PAYG no cambia los nombres de interfaz):
   Elastic IP. Licencia trial: hasta 3 dispositivos y 1 GB/día de logs. El
   FortiGate del SITE-A le manda logs por IP privada; el del SITE-B, por IP
   pública.
-- Discos **gp3**. FortiOS y FortiAnalyzer fijados en **8.0.1** para que todo el
+- Discos **gp3**. FortiOS y FortiAnalyzer fijados en **8.0.2** para que todo el
   curso use la misma GUI.
 
 ### Fases y lecciones del curso

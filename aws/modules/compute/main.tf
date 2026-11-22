@@ -131,7 +131,7 @@ resource "aws_instance" "fortigate" {
   }
 
   # Discos en gp3 (20% más barato que el gp2 que traen las AMI). Los tamaños son
-  # los de la AMI de FortiGate 8.0.1 (raíz 2 GB, logs 30 GB): EBS no permite
+  # los de la AMI de FortiGate 8.0.2 (raíz 2 GB, logs 30 GB): EBS no permite
   # achicarlos por debajo del snapshot.
   root_block_device {
     volume_type = "gp3"
